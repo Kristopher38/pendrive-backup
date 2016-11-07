@@ -53,12 +53,13 @@ enum {
 };
 
 /* Setup fanotify notifications (FAN) mask. All these defined in fanotify.h. */
+/*static uint64_t event_mask =
+  (FAN_MODIFY| FAN_ONDIR | FAN_EVENT_ON_CHILD);*/
+
 static uint64_t event_mask =
-  (FAN_ACCESS |         /* File accessed */
-   FAN_MODIFY |         /* File modified */
+  (FAN_MODIFY |         /* File modified */
    FAN_CLOSE_WRITE |    /* Writtable file closed */
    FAN_CLOSE_NOWRITE |  /* Unwrittable file closed */
-   FAN_OPEN |           /* File was opened */
    FAN_ONDIR |          /* We want to be reported of events in the directory */
    FAN_EVENT_ON_CHILD); /* We want to be reported of events in files of the directory */
 
@@ -252,7 +253,7 @@ initialize_signals (void)
 
 std::string pendrive_dir()
 {
-    return std::string("/media/kris/9ABA-AE18/backup/");
+    return std::string("/media/kris/5CA693A9A6938266/");
 }
 
 int
@@ -289,6 +290,8 @@ main (int          argc,
   fds[FD_POLL_SIGNAL].events = POLLIN;
   fds[FD_POLL_FANOTIFY].fd = fanotify_fd;
   fds[FD_POLL_FANOTIFY].events = POLLIN;
+
+  mode_t previous = umask(0);
 
   /* Now loop */
   for (;;)
@@ -362,28 +365,35 @@ main (int          argc,
                     }*/
 
                     source_path = source_path.substr(1, std::string::npos); // substr to remove root dir form the path
-
-                    //std::string filename = source_path.substr(source_path.rfind('/') + 1, std::string::npos); // get the file name
                     std::string source_path_nofile = source_path.substr(0, source_path.rfind('/') + 1); // remove the file name form the path
 
                     std::string pendrive_dir_str = pendrive_dir();
                     std::size_t pos = 0;
                     struct stat st;
-                    std::string current_dir;
-                    std::string full_path = pendrive_dir_str + source_path;
+                    std::string current_dir; // pendrive directory with appended current working directory (the one we are cheching for existence)
+                    std::string full_path = pendrive_dir_str + source_path; // pendrive directory with full source directory with filename
+                    std::string source_dir; // current source directory which we are working on
 
                     while (pos != std::string::npos) // iterate through directories to check if they exist on pendrive
                     {
                         pos = source_path_nofile.find('/', pos+1); // pos + 1 to find next dir
-                        current_dir = pendrive_dir_str + source_path_nofile.substr(0, pos);
-                        int dir_stat = stat(current_dir.c_str(), &st)
-                        if (dir_stat == -1) // if directory doesn't exist, create
-                            mkdir(current_dir.c_str(), 0777);
+                        current_dir = pendrive_dir_str + source_dir;
+                        source_dir = source_path_nofile.substr(0, pos);
+                        if (stat(current_dir.c_str(), &st) == -1) // if directory doesn't exist, create
+                        {
+                            int original_dir_st = stat(std::string("/"+source_dir).c_str(), &st); // get original folder's stat...
+                            if (original_dir_st == -1)
+                                fprintf(stderr, "Error stat(): %s, path: %s\n", strerror(errno), std::string("/"+source_dir).c_str());
+                            //std::cout<<"Original folder stat: "<<std::oct<<st.st_mode<<std::endl;
+                            mkdir(current_dir.c_str(), st.st_mode);
+                            //stat(current_dir.c_str(), &st);
+                            //std::cout<<"Resulting folder stat: "<<std::oct<<st.st_mode<<std::endl; // ...and use it to make folder on pendrive with identical permissions
+                        }
                     }
 
-                    int target = open(full_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0777);
                     struct stat stat_source;
                     fstat(metadata->fd, &stat_source);
+                    int target = open(full_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, stat_source.st_mode);
 
                     if (target == -1)
                         fprintf(stderr, "Error open(): %s, path: %s\n", strerror(errno), full_path.c_str());
@@ -401,29 +411,6 @@ main (int          argc,
                     //event_process (metadata);
                     close(metadata->fd);
                     close(target);
-                    /*char pathc[PATH_MAX];
-                    get_file_path_from_fd(metadata->fd, pathc, PATH_MAX);
-                    printf("file descriptor: %d\n", metadata->fd);*/
-
-                    /*int file;
-                        file = open(pathc, O_RDONLY);
-                    if (file == -1)
-                        fprintf(stderr, "Nie otwarlo tego jebanego pliku, %s", strerror(errno));*/
-                    /*FILE* fp = fdopen(metadata->fd, "r");
-                    if (fp == NULL)
-                        fprintf(stderr, "Error fdopen(): %s, file descriptor: %d\n", strerror(errno), metadata->fd);*/
-                    /*ssize_t retread;
-                    char buffer[128];
-                    retread = read(metadata->fd, buffer, 128);
-                    printf(buffer);
-                    if (retread == -1)
-                        fprintf(stderr, "Error read(): %s, file descriptor: %d\n", strerror(errno), metadata->fd);*/
-
-                    /*close(file);*/
-
-                    /*event_process (metadata);
-                    if (metadata->fd > 0)
-                        close (metadata->fd);*/
                     metadata = FAN_EVENT_NEXT (metadata, length);
                 }
             }
