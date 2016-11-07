@@ -53,8 +53,6 @@ enum {
 };
 
 /* Setup fanotify notifications (FAN) mask. All these defined in fanotify.h. */
-/*static uint64_t event_mask =
-  (FAN_MODIFY| FAN_ONDIR | FAN_EVENT_ON_CHILD);*/
 
 static uint64_t event_mask =
   (FAN_MODIFY |         /* File modified */
@@ -66,6 +64,8 @@ static uint64_t event_mask =
 /* Array of directories being monitored */
 static monitored_t *monitors;
 static int n_monitors;
+
+std::string pendrive_dir;
 
 static char *
 get_program_name_from_pid (int     pid,
@@ -186,13 +186,13 @@ initialize_fanotify (int          argc,
     }
 
   /* Allocate array of monitor setups */
-  n_monitors = argc - 1;
+  n_monitors = argc - 2;
   monitors = (monitored_t*)malloc (n_monitors * sizeof (monitored_t));
 
   /* Loop all input directories, setting up marks */
   for (i = 0; i < n_monitors; ++i)
     {
-      monitors[i].path = strdup (argv[i + 1]);
+      monitors[i].path = strdup (argv[i + 2]);
       /* Add new fanotify mark */
       if (fanotify_mark (fanotify_fd,
                          FAN_MARK_ADD | FAN_MARK_MOUNT,
@@ -251,11 +251,6 @@ initialize_signals (void)
   return signal_fd;
 }
 
-std::string pendrive_dir()
-{
-    return std::string("/media/kris/5CA693A9A6938266/");
-}
-
 int
 main (int          argc,
       const char **argv)
@@ -265,9 +260,9 @@ main (int          argc,
   struct pollfd fds[FD_POLL_MAX];
 
   /* Input arguments... */
-  if (argc < 2)
+  if (argc < 3)
     {
-      fprintf (stderr, "Usage: %s directory1 [directory2 ...]\n", argv[0]);
+      fprintf (stderr, "Usage: %s pendrive_directory monitored_mount1 [monitored_mount2 ...]\n", argv[0]);
       exit (EXIT_FAILURE);
     }
 
@@ -292,6 +287,7 @@ main (int          argc,
   fds[FD_POLL_FANOTIFY].events = POLLIN;
 
   mode_t previous = umask(0);
+  pendrive_dir = strdup(argv[1]);
 
   /* Now loop */
   for (;;)
@@ -367,7 +363,7 @@ main (int          argc,
                     source_path = source_path.substr(1, std::string::npos); // substr to remove root dir form the path
                     std::string source_path_nofile = source_path.substr(0, source_path.rfind('/') + 1); // remove the file name form the path
 
-                    std::string pendrive_dir_str = pendrive_dir();
+                    std::string pendrive_dir_str = pendrive_dir;
                     std::size_t pos = 0;
                     struct stat st;
                     std::string current_dir; // pendrive directory with appended current working directory (the one we are cheching for existence)
