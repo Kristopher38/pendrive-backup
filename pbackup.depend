@@ -1,0 +1,19 @@
+# depslib dependency file v1.0
+1478535521 source:/home/kris/Pulpit/pbackup/main.cpp
+	<stdio.h>
+	<signal.h>
+	<string.h>
+	<unistd.h>
+	<stdlib.h>
+	<poll.h>
+	<errno.h>
+	<limits.h>
+	<sys/stat.h>
+	<sys/signalfd.h>
+	<fcntl.h>
+	<sys/sendfile.h>
+	<sys/types.h>
+	<string>
+	<iostream>
+	<sys/fanotify.h>
+
