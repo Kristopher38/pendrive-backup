@@ -1,5 +1,6 @@
 #!/bin/bash
 user=$(whoami);
+last_mount="";
 while :
 do
 mount_list="/etc/mtab";
@@ -21,6 +22,10 @@ do
    fi
  fi
 done < "$mount_list"
+if [[ $last_mount != "" ]]; then
+	umount $last_mount;
+fi
+last_mount="";
 sleep 5;
 lsblk | \
 while read -r line;
@@ -36,6 +41,7 @@ do
        mkdir "/media/$user";
        mkdir "/media/$user/backup_pendrive";
        mount -o umask=000,dmask=000,fmask=000,exec $disk_path "/media/$user/backup_pendrive/";
+	   last_mount=$disk_path;
        sleep 1;
         fi
      fi
