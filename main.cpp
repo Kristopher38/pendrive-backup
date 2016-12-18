@@ -32,6 +32,8 @@
 #include <sys/types.h>
 #include <string>
 #include <iostream>
+#include <stdexcept>
+#include <vector>
 
 //#include <linux/fanotify.h>
 #include <sys/fanotify.h>
@@ -230,6 +232,7 @@ initialize_signals (void)
   sigemptyset (&sigmask);
   sigaddset (&sigmask, SIGINT);
   sigaddset (&sigmask, SIGTERM);
+  sigaddset (&sigmask, SIGUSR1);
 
   if (sigprocmask (SIG_BLOCK, &sigmask, NULL) < 0)
     {
@@ -320,6 +323,12 @@ main (int          argc,
               fdsi.ssi_signo == SIGTERM)
             {
               break;
+            }
+
+            if (fdsi.ssi_signo == SIGUSR1)
+            {
+                /* KOD SZYFROWANIA HERE */
+                break;
             }
 
           fprintf (stderr,
