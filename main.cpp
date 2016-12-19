@@ -34,10 +34,13 @@
 #include <iostream>
 #include <stdexcept>
 #include <vector>
+#include <dirent.h>
 
 //#include <linux/fanotify.h>
 #include <sys/fanotify.h>
 
+//mcrypt
+#include <mcrypt.h>
 /* Structure to keep track of monitored directories */
 typedef struct {
   /* Path of the directory */
@@ -68,6 +71,7 @@ static monitored_t *monitors;
 static int n_monitors;
 
 std::string pendrive_dir;
+char* encryption_key;
 
 static char *
 get_program_name_from_pid (int     pid,
@@ -253,6 +257,99 @@ initialize_signals (void)
 
   return signal_fd;
 }
+bool replace(std::string& str, const std::string& from, const std::string& to) {
+    size_t start_pos = str.find(from);
+    if(start_pos == std::string::npos)
+        return false;
+    str.replace(start_pos, from.length(), to);
+    return true;
+}
+int encrypt(
+    char* IV, 
+    char* key,
+    const char* path,
+    bool isDecrypt
+){
+  MCRYPT td = mcrypt_module_open("rijndael-128", NULL, "cbc", NULL);
+  
+  int blocksize = mcrypt_enc_get_block_size(td);
+  char* block_buffer = (char *)malloc(blocksize);
+  
+  mcrypt_generic_init(td, key, 16, IV);
+  FILE *fileptr;
+  FILE *write_ptr;
+  fileptr = fopen(path, "rb");  
+  std::string str(path);
+  if(isDecrypt)
+     replace(str,".enc","");
+  else
+     str = str + ".enc";
+  write_ptr = fopen(str.c_str(),"wb");
+  while(true)
+  {
+   int readbytes = fread(block_buffer,1,blocksize,fileptr);
+   if(readbytes == blocksize)
+   {
+   if(!isDecrypt)
+     mcrypt_generic(td, block_buffer, blocksize);
+   else
+     mdecrypt_generic(td, block_buffer, blocksize);
+   fwrite(block_buffer,1,blocksize,write_ptr); 
+   }
+   else
+   {
+	if(readbytes > 0)
+        {
+	  if(!isDecrypt)
+            mcrypt_generic(td, block_buffer, readbytes);
+	  else
+            mdecrypt_generic(td, block_buffer, readbytes);
+   	  fwrite(block_buffer,1,readbytes,write_ptr); 
+        }
+	break;
+   }
+}
+
+  fclose(write_ptr);
+  fclose(fileptr);
+  mcrypt_generic_deinit (td);
+  mcrypt_module_close(td);
+  
+  return 0;
+}
+
+void crypt_file(const char* file)
+{
+ char* IV = "ghlvkycdfncsoitd";
+ //TUTAJ ZROBIE POZNIEJ SPRAWDZANIE CZY ISTNIEJE JUZ PLIK .ENC (PLIKU `file`) JEZELI TAK TO USUNIE + POMIJA PLIKI .ENC
+ encrypt(IV, encryption_key,file,false);
+}
+
+void get_directory(const char* directory)
+{
+    DIR *dir = opendir(directory);
+
+    struct dirent *entry = readdir(dir);
+
+    while (entry != NULL)
+    {
+	std::string str2(entry->d_name);
+ 	std::string str(directory);
+	std::string file = str + "/" + str2;
+        if (entry->d_type == DT_DIR && str2 != ".." && str2 != ".")
+            get_directory(file.c_str());	
+	else if (entry->d_type == DT_REG)
+	    crypt_file(file.c_str());
+        entry = readdir(dir);
+    }
+
+    closedir(dir);
+}
+void crypt_files()
+{
+    //get_directory(pendrive_dir.c_str());
+    get_directory("/home/kamil/Wideo");
+}
 
 int
 main (int          argc,
@@ -261,7 +358,7 @@ main (int          argc,
   int signal_fd;
   int fanotify_fd;
   struct pollfd fds[FD_POLL_MAX];
-
+  encryption_key = "0123456789abcdef";
   /* Input arguments... */
   if (argc < 3)
     {
@@ -275,7 +372,7 @@ main (int          argc,
       fprintf (stderr, "Couldn't initialize signals\n");
       exit (EXIT_FAILURE);
     }
-
+	
   /* Initialize fanotify FD and the marks */
   if ((fanotify_fd = initialize_fanotify (argc, argv)) < 0)
     {
@@ -328,6 +425,7 @@ main (int          argc,
             if (fdsi.ssi_signo == SIGUSR1)
             {
                 /* KOD SZYFROWANIA HERE */
+		crypt_files();
                 break;
             }
 
