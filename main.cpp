@@ -1,20 +1,3 @@
-/*
- *   File:   fanotify-example-mount.c
- *   Date:   Thu Nov 14 13:47:37 2013
- *   Author: Aleksander Morgado <aleksander@lanedo.com>
- *
- *   A simple tester of fanotify in the Linux kernel.
- *
- *   This program is released in the Public Domain.
- *
- *   Compile with:
- *     $> gcc -o fanotify-example-mount fanotify-example-mount.c
- *
- *   Run as:
- *     $> ./fanotify-example-mount /mount/path /another/mount/path ...
- */
-
-/* Define _GNU_SOURCE, Otherwise we don't get O_LARGEFILE */
 #define _GNU_SOURCE
 
 #include <stdio.h>
@@ -33,14 +16,16 @@
 #include <string>
 #include <iostream>
 #include <stdexcept>
-#include <vector>
+#include <set>
 #include <dirent.h>
-
-//#include <linux/fanotify.h>
+#include <libconfig.h++>
 #include <sys/fanotify.h>
-
-//mcrypt
 #include <mcrypt.h>
+#include <regex>
+#include <pwd.h>
+
+using namespace libconfig;
+
 /* Structure to keep track of monitored directories */
 typedef struct {
   /* Path of the directory */
@@ -57,26 +42,54 @@ enum {
   FD_POLL_MAX
 };
 
-/* Setup fanotify notifications (FAN) mask. All these defined in fanotify.h. */
-
-static uint64_t event_mask =
-  (FAN_MODIFY |         /* File modified */
-   FAN_CLOSE_WRITE |    /* Writtable file closed */
-   FAN_CLOSE_NOWRITE |  /* Unwrittable file closed */
-   FAN_ONDIR |          /* We want to be reported of events in the directory */
-   FAN_EVENT_ON_CHILD); /* We want to be reported of events in files of the directory */
-
-/* Array of directories being monitored */
-static monitored_t *monitors;
-static int n_monitors;
-
 std::string pendrive_dir;
 char* encryption_key;
+std::set<std::string> files_to_copy;
+Config config;
+std::string default_file_owner;
 
-static char *
-get_program_name_from_pid (int     pid,
-                             char   *buffer,
-                             size_t  buffer_size)
+uid_t name_to_uid(char const *name)
+{
+  if (!name)
+    return -1;
+  long const buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
+  if (buflen == -1)
+    return -1;
+  // requires c99
+  char buf[buflen];
+  struct passwd pwbuf, *pwbufp;
+  if (0 != getpwnam_r(name, &pwbuf, buf, buflen, &pwbufp)
+      || !pwbufp)
+    return -1;
+  return pwbufp->pw_uid;
+}
+
+gid_t name_to_gid(char const *name)
+{
+  if (!name)
+    return -1;
+  long const buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
+  if (buflen == -1)
+    return -1;
+  // requires c99
+  char buf[buflen];
+  struct passwd pwbuf, *pwbufp;
+  if (0 != getpwnam_r(name, &pwbuf, buf, buflen, &pwbufp)
+      || !pwbufp)
+    return -1;
+  return pwbufp->pw_gid;
+}
+
+int setegiduid(gid_t egid, uid_t euid)
+{
+    int resgid = setegid(egid);
+    int resuid = seteuid(euid);
+    if ((resgid == -1) || (resuid == -1))
+        return -1;
+    else return 0;
+}
+
+static char* get_program_name_from_pid (int pid, char *buffer, size_t buffer_size)
 {
   int fd;
   ssize_t len;
@@ -103,10 +116,7 @@ get_program_name_from_pid (int     pid,
   return buffer;
 }
 
-static char *
-get_file_path_from_fd (int     fd,
-                         char   *buffer,
-                         size_t  buffer_size)
+static char* get_file_path_from_fd (int fd, char *buffer, size_t buffer_size)
 {
   ssize_t len;
 
@@ -121,8 +131,7 @@ get_file_path_from_fd (int     fd,
   return buffer;
 }
 
-static void
-event_process (struct fanotify_event_metadata *event)
+/*static void event_process (struct fanotify_event_metadata *event)
 {
   char path[PATH_MAX];
 
@@ -139,7 +148,7 @@ event_process (struct fanotify_event_metadata *event)
            path : "unknown"));
 
   if (event->mask)
-    printf ("\tFull event mask: %u\n", event->mask);
+    printf ("\tFull event mask: %llu\n", event->mask);
   if (event->mask & FAN_OPEN)
     printf ("\tFAN_OPEN\n");
   if (event->mask & FAN_ACCESS)
@@ -153,81 +162,76 @@ event_process (struct fanotify_event_metadata *event)
   fflush (stdout);
 
   close (event->fd);
-}
+}*/
 
-static void
-shutdown_fanotify (int fanotify_fd)
+uint64_t initialize_event_mask()
 {
-  int i;
+    uint64_t event_mask = 0;
 
-  for (i = 0; i < n_monitors; ++i)
-    {
-      /* Remove the mark, using same event mask as when creating it */
-      fanotify_mark (fanotify_fd,
-                     FAN_MARK_REMOVE,
-                     event_mask,
-                     AT_FDCWD,
-                     monitors[i].path);
-      free (monitors[i].path);
-    }
-  free (monitors);
-  close (fanotify_fd);
+    if (config.lookup("monitored_events.access"))
+        event_mask |= FAN_ACCESS;
+    if (config.lookup("monitored_events.open"))
+        event_mask |= FAN_OPEN;
+    if (config.lookup("monitored_events.modify"))
+        event_mask |= FAN_MODIFY;
+    if (config.lookup("monitored_events.close_write"))
+        event_mask |= FAN_CLOSE_WRITE;
+    if (config.lookup("monitored_events.close_nowrite"))
+        event_mask |= FAN_CLOSE_NOWRITE;
+    if (config.lookup("monitored_events.close"))
+        event_mask |= FAN_CLOSE;
+
+    return event_mask;
 }
 
-static int
-initialize_fanotify (int          argc,
-                       const char **argv)
+static void shutdown_fanotify (int fanotify_fd)
 {
-  int i;
-  int fanotify_fd;
-
-  /* Create new fanotify device */
-  if ((fanotify_fd = fanotify_init (FAN_CLOEXEC|FAN_NONBLOCK,
-                                    O_RDONLY | O_CLOEXEC | O_LARGEFILE | O_NOATIME)) < 0)
-    {
-      fprintf (stderr,
-               "Couldn't setup new fanotify device: %s\n",
-               strerror (errno));
-      return -1;
-    }
-
-  /* Allocate array of monitor setups */
-  n_monitors = argc - 2;
-  monitors = (monitored_t*)malloc (n_monitors * sizeof (monitored_t));
-
-  /* Loop all input directories, setting up marks */
-  for (i = 0; i < n_monitors; ++i)
-    {
-      monitors[i].path = strdup (argv[i + 2]);
-      /* Add new fanotify mark */
-      if (fanotify_mark (fanotify_fd,
-                         FAN_MARK_ADD | FAN_MARK_MOUNT,
-                         event_mask,
-                         AT_FDCWD,
-                         monitors[i].path) < 0)
-        {
-          fprintf (stderr,
-                   "Couldn't add monitor in mount '%s': '%s'\n",
-                   monitors[i].path,
-                   strerror (errno));
-          return -1;
-        }
-
-      printf ("Started monitoring mount '%s'...\n",
-              monitors[i].path);
-    }
-
-  return fanotify_fd;
+    close(fanotify_fd);
 }
 
-static void
-shutdown_signals (int signal_fd)
+static int initialize_fanotify (int argc, const char **argv)
+{
+    // check if lists of mounts, files and directories to monitor are empty
+    if (config.lookup("monitoring.mounts").getLength() == 0 && config.lookup("monitoring.files_and_dirs").getLength() == 0)
+    {
+        std::cerr<<"Monitoring lists are empty, edit \"monitoring\" section in config.cfg"<<std::endl;
+        return -1;
+    }
+
+    // create fanotify device
+    int fanotify_fd = fanotify_init(FAN_CLOEXEC | FAN_NONBLOCK, O_RDONLY | O_CLOEXEC | O_LARGEFILE | O_NOATIME);
+    if (fanotify_fd < 0)
+    {
+        fprintf (stderr, "Couldn't setup new fanotify device: %s\n", strerror (errno));
+        return -1;
+    }
+
+    uint64_t event_mask = initialize_event_mask(); // get event mask
+
+    for (int i = 0; i < config.lookup("monitoring.mounts").getLength(); ++i)    // add mount to be monitored
+    {
+        const char* monitored_mount = config.lookup("monitoring.mounts")[i];
+        if (fanotify_mark(fanotify_fd, FAN_MARK_ADD | FAN_MARK_MOUNT, event_mask, 0, monitored_mount) < 0)
+            std::cerr<<"Couldn't add monitor on mount "<<monitored_mount<<": "<<strerror(errno)<<std::endl;
+        else std::cout<<"Started monitoring mount "<<monitored_mount<<std::endl;
+    }
+    for (int i = 0; i < config.lookup("monitoring.files_and_dirs").getLength(); ++i)    // add files and directories to be monitored
+    {
+        const char* monitored_file = config.lookup("monitoring.files_and_dirs")[i];
+        if (fanotify_mark(fanotify_fd, FAN_MARK_ADD, event_mask | FAN_EVENT_ON_CHILD, 0, monitored_file) < 0)
+            std::cerr<<"Couldn't add monitor on file or directory "<<monitored_file<<": "<<strerror(errno)<<std::endl;
+        else std::cout<<"Started monitoring file or directory "<<monitored_file<<std::endl;
+    }
+
+    return fanotify_fd;
+}
+
+static void shutdown_signals (int signal_fd)
 {
   close (signal_fd);
 }
 
-static int
-initialize_signals (void)
+static int initialize_signals (void)
 {
   int signal_fd;
   sigset_t sigmask;
@@ -257,28 +261,27 @@ initialize_signals (void)
 
   return signal_fd;
 }
-bool replace(std::string& str, const std::string& from, const std::string& to) {
+
+bool replace(std::string& str, const std::string& from, const std::string& to)
+{
     size_t start_pos = str.find(from);
     if(start_pos == std::string::npos)
         return false;
     str.replace(start_pos, from.length(), to);
     return true;
 }
-int encrypt(
-    char* IV, 
-    char* key,
-    const char* path,
-    bool isDecrypt
-){
+
+int encrypt(char* IV, char* key, const char* path, bool isDecrypt)
+{
   MCRYPT td = mcrypt_module_open("rijndael-128", NULL, "cbc", NULL);
-  
+
   int blocksize = mcrypt_enc_get_block_size(td);
   char* block_buffer = (char *)malloc(blocksize);
-  
+
   mcrypt_generic_init(td, key, 16, IV);
   FILE *fileptr;
   FILE *write_ptr;
-  fileptr = fopen(path, "rb");  
+  fileptr = fopen(path, "rb");
   std::string str(path);
   if(isDecrypt)
      replace(str,".enc","");
@@ -294,7 +297,7 @@ int encrypt(
      mcrypt_generic(td, block_buffer, blocksize);
    else
      mdecrypt_generic(td, block_buffer, blocksize);
-   fwrite(block_buffer,1,blocksize,write_ptr); 
+   fwrite(block_buffer,1,blocksize,write_ptr);
    }
    else
    {
@@ -304,7 +307,7 @@ int encrypt(
             mcrypt_generic(td, block_buffer, readbytes);
 	  else
             mdecrypt_generic(td, block_buffer, readbytes);
-   	  fwrite(block_buffer,1,readbytes,write_ptr); 
+   	  fwrite(block_buffer,1,readbytes,write_ptr);
         }
 	break;
    }
@@ -314,7 +317,7 @@ int encrypt(
   fclose(fileptr);
   mcrypt_generic_deinit (td);
   mcrypt_module_close(td);
-  
+
   return 0;
 }
 
@@ -337,7 +340,7 @@ void get_directory(const char* directory)
  	std::string str(directory);
 	std::string file = str + "/" + str2;
         if (entry->d_type == DT_DIR && str2 != ".." && str2 != ".")
-            get_directory(file.c_str());	
+            get_directory(file.c_str());
 	else if (entry->d_type == DT_REG)
 	    crypt_file(file.c_str());
         entry = readdir(dir);
@@ -345,22 +348,261 @@ void get_directory(const char* directory)
 
     closedir(dir);
 }
+
 void crypt_files()
 {
-    //get_directory(pendrive_dir.c_str());
-    get_directory("/home/kamil/Wideo");
+    get_directory(pendrive_dir.c_str());
+    //get_directory("/home/kamil/Wideo");
 }
+
+bool filter_out(std::string filter_config, std::string text_to_match)
+{
+    enum FILTER_TYPE {BLACKLIST = 0, WHITELIST = 1};
+    FILTER_TYPE filter;
+    std::string filtering_behaviour = config.lookup(std::string(filter_config + ".filtering_behavior"));
+    if (filtering_behaviour == "whitelist")
+        filter = WHITELIST;
+    else if (filtering_behaviour == "blacklist")
+        filter = BLACKLIST;
+    else filter = BLACKLIST;
+
+    Setting& filenames = config.lookup(std::string(filter_config + ".filter_list"));
+    for (int i = 0; i < filenames.getLength(); ++i)
+    {
+        try
+        {
+            std::regex filename_regex(filenames[i]);
+            bool regex_matched = std::regex_match(text_to_match, filename_regex);
+            if (regex_matched && filter == BLACKLIST)       // if item is on blacklist - filter it out
+                return true;
+            else if (regex_matched && filter == WHITELIST)  // if item is on blacklist - don't filter it out
+                return false;
+        }
+        catch (const std::regex_error& e)
+        {
+            std::string file_re = filenames[i];
+            std::cerr<<"Warning, regex "<<file_re<<" is invalid, and won't be used in the future"<<std::endl;
+            filenames.remove(i);
+        }
+    }
+    if (filter == BLACKLIST)        // if item wasn't found on blacklist, don't filter it out
+        return false;
+    else if (filter == WHITELIST)   // if item wasn't found on whitelist, filter it out
+        return true;
+}
+
+void add_file_to_list(const fanotify_event_metadata* metadata)
+{
+    char target_path_c[PATH_MAX];
+    get_file_path_from_fd(metadata->fd, target_path_c, PATH_MAX);
+    std::string target_path(target_path_c);
+
+    // filter out event if path is a directory or if it comes from the pendrive
+    struct stat stat_target;
+    if (stat(target_path_c, &stat_target) == 0)
+        if (S_ISDIR(stat_target.st_mode) || target_path.find(pendrive_dir) != std::string::npos)
+            return;
+
+    // filter event based on extension filter from config
+    if (config.lookup("filtering.extensions.filter_list").getLength() > 0)
+    {
+        std::string filename = target_path.substr(target_path.find_last_of("/") + 1, std::string::npos);
+        if (filter_out("filtering.extensions", filename))
+            return;
+    }
+
+    // filter event based on program filter from config
+    if (config.lookup("filtering.programs.filter_list").getLength() > 0)
+    {
+        char program_name_c[PATH_MAX];
+        get_program_name_from_pid(metadata->pid, program_name_c, PATH_MAX);
+        std::string program_name(program_name_c);
+        std::cout<<"Filtering program: "<<program_name<<std::endl;
+        if (filter_out("filtering.programs", program_name))
+            return;
+    }
+
+    std::cout<<target_path<<std::endl;
+    files_to_copy.insert(target_path);
+}
+
+void copy_files()
+{
+    for (std::set<std::string>::iterator it = files_to_copy.begin(); it != files_to_copy.end(); ++it)
+    {
+        std::string source_path = *it;
+        //std::cout<<"Source path: "<<source_path<<std::endl;
+        if (source_path.find(pendrive_dir) != std::string::npos) // ignore event if it comes from the pendrive
+            return;
+
+        std::string source_path_noroot = source_path.substr(1, std::string::npos); // substr to remove root dir form the path
+        std::string source_path_nofile = source_path_noroot.substr(0, source_path_noroot.rfind('/') + 1); // remove the file name form the path
+
+        std::string pendrive_dir_str = pendrive_dir;
+        std::size_t pos = 0;
+        struct stat st;
+        std::string current_dir; // pendrive directory with appended current working directory (the one we are cheching for existence)
+        std::string full_path = pendrive_dir_str + source_path_noroot; // pendrive directory with full source directory with filename
+        std::string source_dir; // current source directory which we are working on
+
+        while (pos != std::string::npos) // iterate through directories to check if they exist on pendrive
+        {
+            pos = source_path_nofile.find('/', pos+1); // pos + 1 to find next dir
+            current_dir = pendrive_dir_str + source_dir;
+            source_dir = source_path_nofile.substr(0, pos);
+
+            if (stat(current_dir.c_str(), &st) == -1) // if directory doesn't exist, create
+            {
+                int original_dir_st = stat(std::string("/"+source_dir).c_str(), &st); // get original folder's stat...
+                if (original_dir_st == -1)
+                {
+                    fprintf(stderr, "Error stat(): %s, path: %s\n", strerror(errno), std::string("/"+source_dir).c_str());
+                    continue;
+                }
+                //std::cout<<"Original folder stat: "<<std::oct<<st.st_mode<<std::endl;
+                if (mkdir(current_dir.c_str(), st.st_mode) < 0)
+                    std::cerr<<"Error mkdir(): "<<strerror(errno)<<", path: "<<current_dir<<std::endl;
+                stat(current_dir.c_str(), &st);
+                //std::cout<<"Resulting folder stat: "<<std::oct<<st.st_mode<<std::endl; // ...and use it to make folder on pendrive with identical permissions
+            }
+        }
+
+        int source_file = 0;
+        if ((source_file = open(source_path.c_str(), O_RDONLY)) > -1)
+        {
+            int target;
+            struct stat stat_source;
+            fstat(source_file, &stat_source);
+            if (config.lookup("general.preserve_permissions"))
+            {
+                /*if (setegiduid(stat_source.st_gid, stat_source.st_uid) == -1)                     // preserve group and user id ???
+                    fprintf(stderr, "Error setegiduid(): %s", strerror(errno));*/
+
+                target = open(full_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, stat_source.st_mode); // create new file at full_path with stat_source.st_mode permissions
+
+                /*if (setegiduid(name_to_gid(default_file_owner.c_str()), name_to_uid(default_file_owner.c_str())) == -1)
+                    fprintf(stderr, "Error setegiduid(): %s", strerror(errno));*/
+            }
+            else target = open(full_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC);
+
+            if (target == -1)
+                fprintf(stderr, "Error open(): %s, path: %s\n", strerror(errno), full_path.c_str());
+            else
+            {
+                int ret = sendfile(target, source_file, 0, stat_source.st_size); // copy the source_file to target path
+                if (ret == -1)
+                    fprintf(stderr, "Error sendfile(): %s, path: %s\n", strerror(errno), full_path.c_str());
+                else if (ret != stat_source.st_size)
+                {
+                    std::cerr<<"Error sendfile(): count of copied bytes mismatches the file size"<<std::endl;
+                    std::cerr<<"File size: "<<stat_source.st_size<<", bytes written: "<<ret<<std::endl;
+                }
+            }
+            close(target);
+            close(source_file);
+        }
+        else std::cout<<"Can't open source file: "<<strerror(errno)<<", path: "<<source_path<<std::endl;
+    }
+}
+
+template <typename T=int> bool check_and_make_setting(std::string name, Setting::Type val_type, T value = 0, Setting::Type list_type = Setting::TypeString)
+{
+    if (!(config.exists(name) && config.lookup(name).getType() == val_type) ||
+        (val_type == Setting::TypeArray && config.lookup(name).getLength() > 0 && config.lookup(name)[0].getType() != list_type))
+    {
+        std::size_t pos = name.find_last_of(".", std::string::npos);
+        std::cerr<<name<<" setting not specified or wrong type, using default value"<<std::endl;
+        if (pos == std::string::npos)
+        {
+            try {
+                config.getRoot().remove(name);
+            } catch (const SettingNotFoundException& e) {}
+            config.getRoot().add(name, val_type);
+        }
+        else
+        {
+            std::string group = name.substr(0, pos);
+            std::string setting = name.substr(pos+1, std::string::npos);
+            try {
+                config.lookup(group).remove(setting);
+            } catch (const SettingNotFoundException& e) {}
+            config.lookup(group).add(setting, val_type);
+        }
+        try {
+            if (!(val_type == Setting::TypeGroup || val_type == Setting::TypeArray || val_type == Setting::TypeList))
+                config.lookup(name) = value;
+        } catch (const SettingTypeException& e) {
+            std::cerr<<"Warning: no setting initial value specified or value with wrong type supplied to "<<name<<std::endl;
+            throw e;
+        }
+        return true;
+    }
+    return false;
+}
+
+void init_settings()
+{
+    try
+    {
+        config.readFile("config.cfg");
+    }
+    catch(const FileIOException &fioex)
+    {
+        std::cerr<<"Warning: I/O error while reading configuration file (does config.cfg exist?), using default settings"<<std::endl;
+    }
+    catch(const ParseException &pex)
+    {
+        std::cerr<<"Warning: Configuration file parsing error at "<<pex.getFile()<<":"<<pex.getLine()<<" - "<<pex.getError()<<", using default settings"<<std::endl;
+    }
+    check_and_make_setting("general", Setting::TypeGroup);
+    check_and_make_setting("general.preserve_permissions", Setting::TypeBoolean, true);
+    check_and_make_setting("general.encrypt_files", Setting::TypeBoolean, true);
+    check_and_make_setting("general.send_to_ftp", Setting::TypeBoolean, false);
+    check_and_make_setting("general.send_to_phone", Setting::TypeBoolean, false);
+    check_and_make_setting("general.copy_immediately_max_size", Setting::TypeInt64, 4096L);
+    check_and_make_setting("general.permissions_user", Setting::TypeString, "root");
+
+    check_and_make_setting("filtering", Setting::TypeGroup);
+    check_and_make_setting("filtering.extensions", Setting::TypeGroup);
+    check_and_make_setting("filtering.extensions.filter_list", Setting::TypeArray, 0, Setting::TypeString);
+    check_and_make_setting("filtering.extensions.filtering_behavior", Setting::TypeString, "blacklist");
+    check_and_make_setting("filtering.programs", Setting::TypeGroup);
+    check_and_make_setting("filtering.programs.filter_list", Setting::TypeArray, 0, Setting::TypeString);
+    check_and_make_setting("filtering.programs.filtering_behavior", Setting::TypeString, "blacklist");
+
+    check_and_make_setting("monitoring", Setting::TypeGroup);
+    check_and_make_setting("monitoring.mounts", Setting::TypeArray, 0, Setting::TypeString);
+    check_and_make_setting("monitoring.directory_trees", Setting::TypeArray, 0, Setting::TypeString);
+    check_and_make_setting("monitoring.files_and_dirs", Setting::TypeArray, 0, Setting::TypeString);
+
+    check_and_make_setting("monitored_events", Setting::TypeGroup);
+    check_and_make_setting("monitored_events.access", Setting::TypeBoolean, true);
+    check_and_make_setting("monitored_events.open", Setting::TypeBoolean, true);
+    check_and_make_setting("monitored_events.modify", Setting::TypeBoolean, true);
+    check_and_make_setting("monitored_events.close_write", Setting::TypeBoolean, true);
+    check_and_make_setting("monitored_events.close_nowrite", Setting::TypeBoolean, true);
+    check_and_make_setting("monitored_events.close", Setting::TypeBoolean, true);
+
+    config.writeFile("modconfig.cfg");
+}
+
+
 
 int
 main (int          argc,
       const char **argv)
 {
+    init_settings();
+    std::string default_file_owner_temp = config.lookup("general.permissions_user");
+    default_file_owner = default_file_owner_temp;
+
   int signal_fd;
   int fanotify_fd;
   struct pollfd fds[FD_POLL_MAX];
   encryption_key = "0123456789abcdef";
+  bool do_exit_procedures = false;
   /* Input arguments... */
-  if (argc < 3)
+  if (argc < 2)
     {
       fprintf (stderr, "Usage: %s pendrive_directory monitored_mount1 [monitored_mount2 ...]\n", argv[0]);
       exit (EXIT_FAILURE);
@@ -372,7 +614,7 @@ main (int          argc,
       fprintf (stderr, "Couldn't initialize signals\n");
       exit (EXIT_FAILURE);
     }
-	
+
   /* Initialize fanotify FD and the marks */
   if ((fanotify_fd = initialize_fanotify (argc, argv)) < 0)
     {
@@ -380,13 +622,16 @@ main (int          argc,
       exit (EXIT_FAILURE);
     }
 
+    if (setegiduid(name_to_gid(default_file_owner.c_str()), name_to_uid(default_file_owner.c_str())) == -1)
+        fprintf(stderr, "Error setegiduid(): %s", strerror(errno));
+
   /* Setup polling */
   fds[FD_POLL_SIGNAL].fd = signal_fd;
   fds[FD_POLL_SIGNAL].events = POLLIN;
   fds[FD_POLL_FANOTIFY].fd = fanotify_fd;
   fds[FD_POLL_FANOTIFY].events = POLLIN;
 
-  mode_t previous = umask(0);
+  umask(0);
   pendrive_dir = strdup(argv[1]);
 
   /* Now loop */
@@ -419,13 +664,13 @@ main (int          argc,
           if (fdsi.ssi_signo == SIGINT ||
               fdsi.ssi_signo == SIGTERM)
             {
+              do_exit_procedures = false;
               break;
             }
 
             if (fdsi.ssi_signo == SIGUSR1)
             {
-                /* KOD SZYFROWANIA HERE */
-		crypt_files();
+                do_exit_procedures = true;
                 break;
             }
 
@@ -448,77 +693,39 @@ main (int          argc,
                 metadata = (struct fanotify_event_metadata *)buffer;
                 while (FAN_EVENT_OK (metadata, length))
                 {
-                    char target_path[PATH_MAX];
-                    get_file_path_from_fd(metadata->fd, target_path, PATH_MAX);
-
-                    struct stat stat_target;
-                    if (stat(target_path, &stat_target) == 0)
-                        if (S_ISDIR(stat_target.st_mode))
-                        {
-                            metadata = FAN_EVENT_NEXT (metadata, length);
-                            continue;
-                        }
-
-                    std::string source_path = std::string(target_path);
-                    std::cout<<"Source path: "<<source_path<<std::endl;
-                    /*if (source_path.find(pendrive_dir()) != std::string::npos) // ignore event if it comes from the pendrive
-                    {
-                        metadata = FAN_EVENT_NEXT (metadata, length);
-                        continue;
-                    }*/
-
-                    source_path = source_path.substr(1, std::string::npos); // substr to remove root dir form the path
-                    std::string source_path_nofile = source_path.substr(0, source_path.rfind('/') + 1); // remove the file name form the path
-
-                    std::string pendrive_dir_str = pendrive_dir;
-                    std::size_t pos = 0;
-                    struct stat st;
-                    std::string current_dir; // pendrive directory with appended current working directory (the one we are cheching for existence)
-                    std::string full_path = pendrive_dir_str + source_path; // pendrive directory with full source directory with filename
-                    std::string source_dir; // current source directory which we are working on
-
-                    while (pos != std::string::npos) // iterate through directories to check if they exist on pendrive
-                    {
-                        pos = source_path_nofile.find('/', pos+1); // pos + 1 to find next dir
-                        current_dir = pendrive_dir_str + source_dir;
-                        source_dir = source_path_nofile.substr(0, pos);
-                        if (stat(current_dir.c_str(), &st) == -1) // if directory doesn't exist, create
-                        {
-                            int original_dir_st = stat(std::string("/"+source_dir).c_str(), &st); // get original folder's stat...
-                            if (original_dir_st == -1)
-                                fprintf(stderr, "Error stat(): %s, path: %s\n", strerror(errno), std::string("/"+source_dir).c_str());
-                            //std::cout<<"Original folder stat: "<<std::oct<<st.st_mode<<std::endl;
-                            mkdir(current_dir.c_str(), st.st_mode);
-                            //stat(current_dir.c_str(), &st);
-                            //std::cout<<"Resulting folder stat: "<<std::oct<<st.st_mode<<std::endl; // ...and use it to make folder on pendrive with identical permissions
-                        }
-                    }
-
-                    struct stat stat_source;
-                    fstat(metadata->fd, &stat_source);
-                    int target = open(full_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, stat_source.st_mode);
-
-                    if (target == -1)
-                        fprintf(stderr, "Error open(): %s, path: %s\n", strerror(errno), full_path.c_str());
-                    else
-                    {
-                        int ret = sendfile(target, metadata->fd, 0, stat_source.st_size); // copy the file metadata->fd to target path
-                        if (ret == -1)
-                            fprintf(stderr, "Error sendfile(): %s, path: %s\n", strerror(errno), full_path.c_str());
-                        else if (ret != stat_source.st_size)
-                        {
-                            fprintf(stderr, "Error sendfile(): count of copied bytes mismatches the file size");
-                            std::cout<<"File size: "<<stat_source.st_size<<", bytes written: "<<ret<<std::endl;
-                        }
-                    }
+                    add_file_to_list(metadata);
                     //event_process (metadata);
                     close(metadata->fd);
-                    close(target);
                     metadata = FAN_EVENT_NEXT (metadata, length);
                 }
             }
         }
     }
+
+    if (do_exit_procedures)
+    {
+        std::cout<<"Copying files"<<std::endl;
+        copy_files();
+
+        if (config.lookup("general.encrypt_files"))
+        {
+            std::cout<<"Encrypting files"<<std::endl;
+            crypt_files();
+        }
+
+        if (config.lookup("general.send_to_ftp"))
+        {
+            std::cout<<"Sending files to ftp server"<<std::endl;
+            // send_to_ftp();
+        }
+
+        if (config.lookup("general.send_to_phone"))
+        {
+            std::cout<<"Sending files to phone"<<std::endl;
+            // send_to_phone();
+        }
+    }
+
   /* Clean exit */
   shutdown_fanotify (fanotify_fd);
   shutdown_signals (signal_fd);
