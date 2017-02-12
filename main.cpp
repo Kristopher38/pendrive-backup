@@ -397,6 +397,19 @@ void add_file_to_list(const fanotify_event_metadata* metadata)
     get_file_path_from_fd(metadata->fd, target_path_c, PATH_MAX);
     std::string target_path(target_path_c);
 
+    enum FILTER_SOFTNESS {FILTER_SOFT, FILTER_HARD};
+    FILTER_SOFTNESS softness;
+    std::string filter_softness = config.lookup("filtering.filter");
+
+    if (filter_softness == "soft")
+        softness = FILTER_SOFT;
+    else if (filter_softness == "hard")
+        softness = FILTER_HARD;
+    else softness = FILTER_HARD;
+
+    bool filter_extension = false;
+    bool filter_program = false;
+
     // filter out event if path is a directory or if it comes from the pendrive
     struct stat stat_target;
     if (stat(target_path_c, &stat_target) == 0)
@@ -407,8 +420,7 @@ void add_file_to_list(const fanotify_event_metadata* metadata)
     if (config.lookup("filtering.extensions.filter_list").getLength() > 0)
     {
         std::string filename = target_path.substr(target_path.find_last_of("/") + 1, std::string::npos);
-        if (filter_out("filtering.extensions", filename))
-            return;
+        filter_extension = filter_out("filtering.extensions", filename);
     }
 
     // filter event based on program filter from config
@@ -417,10 +429,14 @@ void add_file_to_list(const fanotify_event_metadata* metadata)
         char program_name_c[PATH_MAX];
         get_program_name_from_pid(metadata->pid, program_name_c, PATH_MAX);
         std::string program_name(program_name_c);
-        std::cout<<"Filtering program: "<<program_name<<std::endl;
-        if (filter_out("filtering.programs", program_name))
-            return;
+        filter_program = filter_out("filtering.programs", program_name);
     }
+
+    if (softness == FILTER_HARD && (filter_extension || filter_program))
+        return;
+    if (softness == FILTER_SOFT && (filter_extension && filter_program))
+        return;
+
 
     std::cout<<target_path<<std::endl;
     files_to_copy.insert(target_path);
@@ -569,6 +585,7 @@ void init_settings()
     check_and_make_setting("filtering.programs", Setting::TypeGroup);
     check_and_make_setting("filtering.programs.filter_list", Setting::TypeArray, 0, Setting::TypeString);
     check_and_make_setting("filtering.programs.filtering_behavior", Setting::TypeString, "blacklist");
+    check_and_make_setting("filtering.filter", Setting::TypeString, "soft");
 
     check_and_make_setting("monitoring", Setting::TypeGroup);
     check_and_make_setting("monitoring.mounts", Setting::TypeArray, 0, Setting::TypeString);
