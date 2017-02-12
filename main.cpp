@@ -391,6 +391,19 @@ bool filter_out(std::string filter_config, std::string text_to_match)
         return true;
 }
 
+bool is_directory(std::string path)
+{
+    if (path.back() == '/')
+        path.pop_back();
+    struct stat stat_path;
+    if (stat(path.c_str(), &stat_path) == 0)
+        if (S_ISDIR(stat_path.st_mode))
+            return true;
+        else return false;
+    else
+        return false;
+}
+
 void add_file_to_list(const fanotify_event_metadata* metadata)
 {
     char target_path_c[PATH_MAX];
@@ -411,10 +424,8 @@ void add_file_to_list(const fanotify_event_metadata* metadata)
     bool filter_program = false;
 
     // filter out event if path is a directory or if it comes from the pendrive
-    struct stat stat_target;
-    if (stat(target_path_c, &stat_target) == 0)
-        if (S_ISDIR(stat_target.st_mode) || target_path.find(pendrive_dir) != std::string::npos)
-            return;
+    if (is_directory(target_path) || target_path.find(pendrive_dir) != std::string::npos)
+        return;
 
     // filter event based on extension filter from config
     if (config.lookup("filtering.extensions.filter_list").getLength() > 0)
@@ -577,6 +588,7 @@ void init_settings()
     check_and_make_setting("general.send_to_phone", Setting::TypeBoolean, false);
     check_and_make_setting("general.copy_immediately_max_size", Setting::TypeInt64, 4096L);
     check_and_make_setting("general.permissions_user", Setting::TypeString, "root");
+    check_and_make_setting("general.copy_directory", Setting::TypeString, "");
 
     check_and_make_setting("filtering", Setting::TypeGroup);
     check_and_make_setting("filtering.extensions", Setting::TypeGroup);
@@ -618,12 +630,6 @@ main (int          argc,
   struct pollfd fds[FD_POLL_MAX];
   encryption_key = "0123456789abcdef";
   bool do_exit_procedures = false;
-  /* Input arguments... */
-  if (argc < 2)
-    {
-      fprintf (stderr, "Usage: %s pendrive_directory monitored_mount1 [monitored_mount2 ...]\n", argv[0]);
-      exit (EXIT_FAILURE);
-    }
 
   /* Initialize signals FD */
   if ((signal_fd = initialize_signals ()) < 0)
@@ -649,7 +655,27 @@ main (int          argc,
   fds[FD_POLL_FANOTIFY].events = POLLIN;
 
   umask(0);
-  pendrive_dir = strdup(argv[1]);
+
+    char cwd[1024];
+    std::string copy_dir = config.lookup("general.copy_directory");
+    // check if copy directory is directory or exists
+    if (!is_directory(copy_dir))
+    {
+        std::cerr<<"Copy directory isn't a directory or doesn't exist"<<std::endl;
+        exit(EXIT_FAILURE);
+    }
+    // check if it's absolute
+    else if (copy_dir.length() > 0 && copy_dir[0] == '/')
+        pendrive_dir = copy_dir;
+    // if it's relative, get current working directory and append copy subdirectory to id
+    else if (getcwd(cwd, sizeof(cwd)) != NULL)
+        pendrive_dir = std::string(cwd) + std::string("/") + copy_dir;
+    else
+    {
+        std::cerr<<"Failed to get current working directory"<<std::endl;
+        exit(EXIT_FAILURE);
+    }
+    std::cout<<pendrive_dir<<std::endl;
 
   /* Now loop */
   for (;;)
@@ -732,13 +758,13 @@ main (int          argc,
 
         if (config.lookup("general.send_to_ftp"))
         {
-            std::cout<<"Sending files to ftp server"<<std::endl;
+            // std::cout<<"Sending files to ftp server"<<std::endl;
             // send_to_ftp();
         }
 
         if (config.lookup("general.send_to_phone"))
         {
-            std::cout<<"Sending files to phone"<<std::endl;
+            // std::cout<<"Sending files to phone"<<std::endl;
             // send_to_phone();
         }
     }
