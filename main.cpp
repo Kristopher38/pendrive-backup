@@ -417,6 +417,7 @@ char *trim(char *str)
 
 
     return str;
+}
 
 bool filter_out(std::string filter_config, std::string text_to_match)
 {
@@ -825,8 +826,6 @@ main (int          argc,
 
             if (fdsi.ssi_signo == SIGUSR1)
             {
-                /* KOD SZYFROWANIA HERE */
-                crypt_files(false);
                 do_exit_procedures = true;
                 break;
             }
@@ -867,7 +866,7 @@ main (int          argc,
         if (config.lookup("general.encrypt_files"))
         {
             std::cout<<"Encrypting files"<<std::endl;
-            crypt_files();
+            crypt_files(false);
         }
 
         if (config.lookup("general.send_to_ftp"))
