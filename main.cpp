@@ -676,7 +676,7 @@ void init_settings()
     check_and_make_setting("monitored_events.close_nowrite", Setting::TypeBoolean, true);
     check_and_make_setting("monitored_events.close", Setting::TypeBoolean, true);
 
-    config.writeFile("modconfig.cfg");
+    //config.writeFile("modconfig.cfg");
 }
 
 
@@ -692,6 +692,30 @@ main (int          argc,
   int signal_fd;
   int fanotify_fd;
   struct pollfd fds[FD_POLL_MAX];
+
+    char cwd[1024];
+    std::string copy_dir = config.lookup("general.copy_directory");
+    // check if copy directory is directory or exists
+    if (!is_directory(copy_dir))
+    {
+        std::cerr<<"Copy directory isn't a directory or doesn't exist"<<std::endl;
+        exit(EXIT_FAILURE);
+    }
+    // check if it has / on the end - it's required standarized way for the program to work
+    if (copy_dir.back() != '/')
+        copy_dir.append("/");
+    // check if it's absolute
+    if (copy_dir.length() > 0 && copy_dir[0] == '/')
+        pendrive_dir = copy_dir;
+    // if it's relative, get current working directory and append copy subdirectory to id
+    else if (getcwd(cwd, sizeof(cwd)) != NULL)
+        pendrive_dir = std::string(cwd) + std::string("/") + copy_dir;
+    else
+    {
+        std::cerr<<"Failed to get current working directory"<<std::endl;
+        exit(EXIT_FAILURE);
+    }
+    std::cout<<pendrive_dir<<std::endl;
 
   if(access("enc.key",F_OK) == -1)
   {
@@ -736,12 +760,7 @@ main (int          argc,
     }
 
  }
-  /* Input arguments... */
-  if (argc < 3)
-    {
-      fprintf (stderr, "Usage: %s pendrive_directory monitored_mount1 [monitored_mount2 ...]\n", argv[0]);
-      exit (EXIT_FAILURE);
-    }
+
   bool do_exit_procedures = false;
 
   /* Initialize signals FD */
@@ -758,8 +777,8 @@ main (int          argc,
       exit (EXIT_FAILURE);
     }
 
-    if (setegiduid(name_to_gid(default_file_owner.c_str()), name_to_uid(default_file_owner.c_str())) == -1)
-        fprintf(stderr, "Error setegiduid(): %s", strerror(errno));
+    //if (setegiduid(name_to_gid(default_file_owner.c_str()), name_to_uid(default_file_owner.c_str())) == -1) // set gid and uid to desired user???
+    //    fprintf(stderr, "Error setegiduid(): %s", strerror(errno));
 
   /* Setup polling */
   fds[FD_POLL_SIGNAL].fd = signal_fd;
@@ -769,26 +788,7 @@ main (int          argc,
 
   umask(0);
 
-    char cwd[1024];
-    std::string copy_dir = config.lookup("general.copy_directory");
-    // check if copy directory is directory or exists
-    if (!is_directory(copy_dir))
-    {
-        std::cerr<<"Copy directory isn't a directory or doesn't exist"<<std::endl;
-        exit(EXIT_FAILURE);
-    }
-    // check if it's absolute
-    else if (copy_dir.length() > 0 && copy_dir[0] == '/')
-        pendrive_dir = copy_dir;
-    // if it's relative, get current working directory and append copy subdirectory to id
-    else if (getcwd(cwd, sizeof(cwd)) != NULL)
-        pendrive_dir = std::string(cwd) + std::string("/") + copy_dir;
-    else
-    {
-        std::cerr<<"Failed to get current working directory"<<std::endl;
-        exit(EXIT_FAILURE);
-    }
-    std::cout<<pendrive_dir<<std::endl;
+
 
   /* Now loop */
   for (;;)
