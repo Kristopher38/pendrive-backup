@@ -86,17 +86,6 @@ gid_t name_to_gid(char const *name)
   return pwbufp->pw_gid;
 }
 
-static uint64_t event_mask =
-(FAN_MODIFY |         /* File modified */
-	FAN_CLOSE_WRITE |    /* Writtable file closed */
-	FAN_CLOSE_NOWRITE |  /* Unwrittable file closed */
-	FAN_ONDIR |          /* We want to be reported of events in the directory */
-	FAN_EVENT_ON_CHILD); /* We want to be reported of events in files of the directory */
-
-						 /* Array of directories being monitored */
-static monitored_t *monitors;
-static int n_monitors;
-
 int setegiduid(gid_t egid, uid_t euid)
 {
     int resgid = setegid(egid);
@@ -148,7 +137,6 @@ static char* get_file_path_from_fd (int fd, char *buffer, size_t buffer_size)
 	return buffer;
 }
 
-<<<<<<< HEAD
 /*static void event_process (struct fanotify_event_metadata *event)
 {
   char path[PATH_MAX];
@@ -517,6 +505,8 @@ bool filter_out(std::string filter_config, std::string text_to_match)
         return false;
     else if (filter == WHITELIST)   // if item wasn't found on whitelist, filter it out
         return true;
+
+    return false;
 }
 
 bool is_directory(std::string path)
@@ -530,6 +520,7 @@ bool is_directory(std::string path)
         else return false;
     else
         return false;
+    return false;
 }
 
 void add_file_to_list(const fanotify_event_metadata* metadata)
