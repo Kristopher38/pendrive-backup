@@ -108,13 +108,13 @@ static std::string get_program_name_from_pid (int pid)
 	/* Try to get program name by PID */
 	sprintf(buffer, "/proc/%d/cmdline", pid);
 	if ((fd = open(buffer, O_RDONLY)) < 0)
-		return NULL;
+		return std::string("");
 
 	/* Read file contents into buffer */
 	if ((len = read(fd, buffer, PATH_MAX - 1)) <= 0)
 	{
 		close(fd);
-		return NULL;
+		return std::string("");
 	}
 	close(fd);
 
@@ -199,10 +199,10 @@ static void shutdown_fanotify (int fanotify_fd)
     close(fanotify_fd);
 }
 
-static int initialize_fanotify (int argc, const char **argv)
+static int initialize_fanotify()
 {
     // check if lists of mounts, files and directories to monitor are empty
-    if (config.lookup("monitoring.mounts").getLength() == 0 && config.lookup("monitoring.files_and_dirs").getLength() == 0)
+    if (config.lookup("monitoring.mounts").getLength() == 0 && config.lookup("monitoring.files_and_dirs").getLength() == 0 && config.lookup("monitoring.directory_trees").getLength() == 0)
     {
         std::cerr<<"Monitoring lists are empty, edit \"monitoring\" section in config.cfg"<<std::endl;
         return -1;
@@ -231,6 +231,13 @@ static int initialize_fanotify (int argc, const char **argv)
         if (fanotify_mark(fanotify_fd, FAN_MARK_ADD, event_mask | FAN_EVENT_ON_CHILD, 0, monitored_file) < 0)
             std::cerr<<"Couldn't add monitor on file or directory "<<monitored_file<<": "<<strerror(errno)<<std::endl;
         else std::cout<<"Started monitoring file or directory "<<monitored_file<<std::endl;
+    }
+    for (int i = 0; i < config.lookup("monitoring.directory_trees").getLength(); ++i)    // add files and directories to be monitored
+    {
+        const char* monitored_dirtree = config.lookup("monitoring.directory_trees")[i];
+        if (fanotify_mark(fanotify_fd, FAN_MARK_ADD | FAN_MARK_MOUNT, event_mask, 0, monitored_dirtree) < 0)
+            std::cerr<<"Couldn't add monitor on directory tree "<<monitored_dirtree<<": "<<strerror(errno)<<std::endl;
+        else std::cout<<"Started monitoring directory tree "<<monitored_dirtree<<std::endl;
     }
 
     return fanotify_fd;
@@ -513,7 +520,7 @@ bool filter_out(std::string filter_config, std::string text_to_match)
     return false;
 }
 
-bool is_directory(std::string path)
+bool is_directory(std::string path) // checks if specified path is a directory
 {
     if (path.back() == '/')
         path.pop_back();
@@ -527,7 +534,7 @@ bool is_directory(std::string path)
     return false;
 }
 
-bool is_small(std::string path)
+bool is_small(std::string path) // checks if file size is smaller than specified in config in general.copy_immediately_max_size
 {
     if (is_directory(path))
         return false;
@@ -538,7 +545,15 @@ bool is_small(std::string path)
     return false;
 }
 
-std::string target_path(std::string source_path)
+bool is_child(std::string parent, std::string child) // checks if child is a somewhere inside parent directory in the filesystem tree hierarchy
+{
+    child = child.substr(0, parent.length()); // match the lengths of both strings and check if they match each other
+    if (child == parent)
+        return true;
+    else return false;
+}
+
+std::string target_path(std::string source_path)    // returns path to which file shall be copied
 {
     return pendrive_dir + source_path.substr(1, std::string::npos);
 }
@@ -617,6 +632,27 @@ void make_dirs(std::string source_path)
     }
 }
 
+bool is_allowed_by_paths(std::string source_path)
+{
+    const unsigned path_count = 3;
+    const std::string path_order[path_count] = {"mounts", "files_and_dirs", "directory_trees"}; // defines in which order paths shall be checked, directory trees must be always on the end
+
+    for (unsigned i = 0; i < path_count; ++i)   // loop through above path types
+    {
+        Setting& path = config.lookup(std::string("monitoring.") + path_order[i]);
+        if (path.getLength() > 0)
+        {
+            for (int j = 0; j < path.getLength(); ++j)  // loop through each path in path type
+            {
+                std::string parent_path = path[j];
+                if (is_child(parent_path, source_path))
+                    return true;    // if file is a child of some path, let it be
+            }
+        }
+    }
+    return false;   // if file wasn't found to be child of any of specified paths, drop it
+}
+
 void add_file_to_list(const fanotify_event_metadata* metadata)
 {
     char source_path_c[PATH_MAX];
@@ -658,6 +694,9 @@ void add_file_to_list(const fanotify_event_metadata* metadata)
     if (softness == FILTER_HARD && (filter_extension || filter_program))
         return;
     if (softness == FILTER_SOFT && (filter_extension && filter_program))
+        return;
+
+    if (!is_allowed_by_paths(source_path))
         return;
 
     // copy immediately instead of adding to the list if it's small enough (value from config)
@@ -805,7 +844,7 @@ main(int          argc,
     }
     std::cout<<pendrive_dir<<std::endl;
 
-  	/*if (access("enc.key", F_OK) == -1)
+  	if (access("enc.key", F_OK) == -1)
 	{
 		printf("Please enter password to set\n");
 		char pass[128];
@@ -860,7 +899,7 @@ main(int          argc,
 				printf("FAILED TRY AGAIN\n");
 		}
 
-	}*/
+	}
 
   bool do_exit_procedures = false;
 
@@ -872,7 +911,7 @@ main(int          argc,
     }
 
   /* Initialize fanotify FD and the marks */
-  if ((fanotify_fd = initialize_fanotify (argc, argv)) < 0)
+  if ((fanotify_fd = initialize_fanotify()) < 0)
     {
       fprintf (stderr, "Couldn't initialize fanotify\n");
       exit (EXIT_FAILURE);
