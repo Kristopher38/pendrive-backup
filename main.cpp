@@ -661,14 +661,14 @@ void add_file_to_list(const fanotify_event_metadata* metadata)
         return;
 
     // copy immediately instead of adding to the list if it's small enough (value from config)
+    std::cout<<source_path<<std::endl;
     if (is_small(source_path))
     {
         make_dirs(source_path);
         copy_file(source_path, target_path(source_path));
     }
-
-    std::cout<<source_path<<std::endl;
-    files_to_copy.insert(source_path);
+    else
+        files_to_copy.insert(source_path);
 }
 
 void copy_files()
