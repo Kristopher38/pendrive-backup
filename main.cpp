@@ -48,6 +48,9 @@ enum {
 	FD_POLL_MAX
 };
 
+const std::string app_name("pbackup");
+
+std::string app_launch_dir;
 std::string pendrive_dir;
 char* encryption_key;
 std::set<std::string> files_to_copy;
@@ -95,8 +98,9 @@ int setegiduid(gid_t egid, uid_t euid)
     else return 0;
 }
 
-static char* get_program_name_from_pid (int pid, char *buffer, size_t buffer_size)
+static std::string get_program_name_from_pid (int pid)
 {
+    char buffer[PATH_MAX];
 	int fd;
 	ssize_t len;
 	char *aux;
@@ -107,7 +111,7 @@ static char* get_program_name_from_pid (int pid, char *buffer, size_t buffer_siz
 		return NULL;
 
 	/* Read file contents into buffer */
-	if ((len = read(fd, buffer, buffer_size - 1)) <= 0)
+	if ((len = read(fd, buffer, PATH_MAX - 1)) <= 0)
 	{
 		close(fd);
 		return NULL;
@@ -119,7 +123,7 @@ static char* get_program_name_from_pid (int pid, char *buffer, size_t buffer_siz
 	if (aux)
 		*aux = '\0';
 
-	return buffer;
+	return std::string(buffer);
 }
 
 static char* get_file_path_from_fd (int fd, char *buffer, size_t buffer_size)
@@ -523,11 +527,101 @@ bool is_directory(std::string path)
     return false;
 }
 
+bool is_small(std::string path)
+{
+    if (is_directory(path))
+        return false;
+    struct stat stat_path;
+    if (stat(path.c_str(), &stat_path) == 0)
+        if (stat_path.st_size <= static_cast<int64_t>(config.lookup("general.copy_immediately_max_size")))
+            return true;
+    return false;
+}
+
+std::string target_path(std::string source_path)
+{
+    return pendrive_dir + source_path.substr(1, std::string::npos);
+}
+
+void copy_file(std::string from, std::string to)
+{
+    int source_file = 0;
+    if ((source_file = open(from.c_str(), O_RDONLY)) > -1)
+    {
+        int target;
+        struct stat stat_source;
+        fstat(source_file, &stat_source);
+        if (config.lookup("general.preserve_permissions"))
+        {
+            /*if (setegiduid(stat_source.st_gid, stat_source.st_uid) == -1)                     // preserve group and user id ???
+                fprintf(stderr, "Error setegiduid(): %s", strerror(errno));*/
+
+            target = open(to.c_str(), O_WRONLY | O_CREAT | O_TRUNC, stat_source.st_mode); // create new file at full_path with stat_source.st_mode permissions
+
+            /*if (setegiduid(name_to_gid(default_file_owner.c_str()), name_to_uid(default_file_owner.c_str())) == -1)
+                fprintf(stderr, "Error setegiduid(): %s", strerror(errno));*/
+        }
+        else target = open(to.c_str(), O_WRONLY | O_CREAT | O_TRUNC);
+
+        if (target == -1)
+            fprintf(stderr, "Error open(): %s, path: %s\n", strerror(errno), to.c_str());
+        else
+        {
+            int ret = sendfile64(target, source_file, 0, stat_source.st_size); // copy the source_file to target path
+            if (ret == -1)
+                fprintf(stderr, "Error sendfile(): %s, path: %s\n", strerror(errno), to.c_str());
+            else if (ret != stat_source.st_size)
+            {
+                std::cerr<<"Error sendfile(): count of copied bytes mismatches the file size"<<std::endl;
+                std::cerr<<"File size: "<<stat_source.st_size<<", bytes written: "<<ret<<std::endl;
+            }
+        }
+        close(target);
+        close(source_file);
+    }
+    else std::cout<<"Can't open source file: "<<strerror(errno)<<", path: "<<from<<std::endl;
+}
+
+void make_dirs(std::string source_path)
+{
+    if (source_path.find(pendrive_dir) != std::string::npos) // ignore event if it comes from the pendrive
+        return;
+
+    std::string source_path_nofile = source_path.substr(1, source_path.rfind('/')); // remove the root slash at the beggining and file name form the path
+
+    std::size_t pos = 0;
+    struct stat st;
+    std::string current_dir; // pendrive directory with appended current working directory (the one we are checking for existence)
+    std::string source_dir; // current source directory which we are working on
+
+    while (pos != std::string::npos) // iterate through directories to check if they exist on pendrive
+    {
+        pos = source_path_nofile.find('/', pos+1); // pos + 1 to find next dir
+        current_dir = pendrive_dir + source_dir;
+        source_dir = source_path_nofile.substr(0, pos);
+
+        if (stat(current_dir.c_str(), &st) == -1) // if directory doesn't exist, create
+        {
+            int original_dir_st = stat(std::string("/"+source_dir).c_str(), &st); // get original folder's stat...
+            if (original_dir_st == -1)
+            {
+                fprintf(stderr, "Error stat(): %s, path: %s\n", strerror(errno), std::string("/"+source_dir).c_str());
+                continue;
+            }
+            //std::cout<<"Original folder stat: "<<std::oct<<st.st_mode<<std::endl;
+            if (mkdir(current_dir.c_str(), st.st_mode) < 0)
+                std::cerr<<"Error mkdir(): "<<strerror(errno)<<", path: "<<current_dir<<std::endl;
+            stat(current_dir.c_str(), &st);
+            //std::cout<<"Resulting folder stat: "<<std::oct<<st.st_mode<<std::endl; // ...and use it to make folder on pendrive with identical permissions
+        }
+    }
+}
+
 void add_file_to_list(const fanotify_event_metadata* metadata)
 {
-    char target_path_c[PATH_MAX];
-    get_file_path_from_fd(metadata->fd, target_path_c, PATH_MAX);
-    std::string target_path(target_path_c);
+    char source_path_c[PATH_MAX];
+    get_file_path_from_fd(metadata->fd, source_path_c, PATH_MAX);
+    std::string source_path(source_path_c);
 
     enum FILTER_SOFTNESS {FILTER_SOFT, FILTER_HARD};
     FILTER_SOFTNESS softness;
@@ -542,23 +636,22 @@ void add_file_to_list(const fanotify_event_metadata* metadata)
     bool filter_extension = false;
     bool filter_program = false;
 
-    // filter out event if path is a directory or if it comes from the pendrive
-    if (is_directory(target_path) || target_path.find(pendrive_dir) != std::string::npos)
+    // filter out event if path is a directory or if it comes from the pendrive or if it's generated by the program itself
+    std::string program_name = get_program_name_from_pid(metadata->pid);
+    if (is_directory(source_path) || source_path.find(pendrive_dir) != std::string::npos || program_name == app_name || program_name == app_launch_dir)
         return;
 
     // filter event based on extension filter from config
     if (config.lookup("filtering.extensions.filter_list").getLength() > 0)
     {
-        std::string filename = target_path.substr(target_path.find_last_of("/") + 1, std::string::npos);
+        std::string filename = source_path.substr(source_path.find_last_of("/") + 1, std::string::npos);
         filter_extension = filter_out("filtering.extensions", filename);
     }
 
     // filter event based on program filter from config
     if (config.lookup("filtering.programs.filter_list").getLength() > 0)
     {
-        char program_name_c[PATH_MAX];
-        get_program_name_from_pid(metadata->pid, program_name_c, PATH_MAX);
-        std::string program_name(program_name_c);
+        std::string program_name = get_program_name_from_pid(metadata->pid);
         filter_program = filter_out("filtering.programs", program_name);
     }
 
@@ -567,9 +660,15 @@ void add_file_to_list(const fanotify_event_metadata* metadata)
     if (softness == FILTER_SOFT && (filter_extension && filter_program))
         return;
 
+    // copy immediately instead of adding to the list if it's small enough (value from config)
+    if (is_small(source_path))
+    {
+        make_dirs(source_path);
+        copy_file(source_path, target_path(source_path));
+    }
 
-    std::cout<<target_path<<std::endl;
-    files_to_copy.insert(target_path);
+    std::cout<<source_path<<std::endl;
+    files_to_copy.insert(source_path);
 }
 
 void copy_files()
@@ -577,77 +676,9 @@ void copy_files()
     for (std::set<std::string>::iterator it = files_to_copy.begin(); it != files_to_copy.end(); ++it)
     {
         std::string source_path = *it;
-        //std::cout<<"Source path: "<<source_path<<std::endl;
-        if (source_path.find(pendrive_dir) != std::string::npos) // ignore event if it comes from the pendrive
-            return;
-
-        std::string source_path_noroot = source_path.substr(1, std::string::npos); // substr to remove root dir form the path
-        std::string source_path_nofile = source_path_noroot.substr(0, source_path_noroot.rfind('/') + 1); // remove the file name form the path
-
-        std::string pendrive_dir_str = pendrive_dir;
-        std::size_t pos = 0;
-        struct stat st;
-        std::string current_dir; // pendrive directory with appended current working directory (the one we are cheching for existence)
-        std::string full_path = pendrive_dir_str + source_path_noroot; // pendrive directory with full source directory with filename
-        std::string source_dir; // current source directory which we are working on
-
-        while (pos != std::string::npos) // iterate through directories to check if they exist on pendrive
-        {
-            pos = source_path_nofile.find('/', pos+1); // pos + 1 to find next dir
-            current_dir = pendrive_dir_str + source_dir;
-            source_dir = source_path_nofile.substr(0, pos);
-
-            if (stat(current_dir.c_str(), &st) == -1) // if directory doesn't exist, create
-            {
-                int original_dir_st = stat(std::string("/"+source_dir).c_str(), &st); // get original folder's stat...
-                if (original_dir_st == -1)
-                {
-                    fprintf(stderr, "Error stat(): %s, path: %s\n", strerror(errno), std::string("/"+source_dir).c_str());
-                    continue;
-                }
-                //std::cout<<"Original folder stat: "<<std::oct<<st.st_mode<<std::endl;
-                if (mkdir(current_dir.c_str(), st.st_mode) < 0)
-                    std::cerr<<"Error mkdir(): "<<strerror(errno)<<", path: "<<current_dir<<std::endl;
-                stat(current_dir.c_str(), &st);
-                //std::cout<<"Resulting folder stat: "<<std::oct<<st.st_mode<<std::endl; // ...and use it to make folder on pendrive with identical permissions
-            }
-        }
-
-        int source_file = 0;
-        if ((source_file = open(source_path.c_str(), O_RDONLY)) > -1)
-        {
-            int target;
-            struct stat stat_source;
-            fstat(source_file, &stat_source);
-            if (config.lookup("general.preserve_permissions"))
-            {
-                /*if (setegiduid(stat_source.st_gid, stat_source.st_uid) == -1)                     // preserve group and user id ???
-                    fprintf(stderr, "Error setegiduid(): %s", strerror(errno));*/
-
-                target = open(full_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, stat_source.st_mode); // create new file at full_path with stat_source.st_mode permissions
-
-                /*if (setegiduid(name_to_gid(default_file_owner.c_str()), name_to_uid(default_file_owner.c_str())) == -1)
-                    fprintf(stderr, "Error setegiduid(): %s", strerror(errno));*/
-            }
-            else target = open(full_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC);
-
-            if (target == -1)
-                fprintf(stderr, "Error open(): %s, path: %s\n", strerror(errno), full_path.c_str());
-            else
-            {
-                int ret = sendfile(target, source_file, 0, stat_source.st_size); // copy the source_file to target path
-                if (ret == -1)
-                    fprintf(stderr, "Error sendfile(): %s, path: %s\n", strerror(errno), full_path.c_str());
-                else if (ret != stat_source.st_size)
-                {
-                    std::cerr<<"Error sendfile(): count of copied bytes mismatches the file size"<<std::endl;
-                    std::cerr<<"File size: "<<stat_source.st_size<<", bytes written: "<<ret<<std::endl;
-                }
-            }
-            close(target);
-            close(source_file);
-        }
-        else std::cout<<"Can't open source file: "<<strerror(errno)<<", path: "<<source_path<<std::endl;
+        std::string target_path = pendrive_dir + source_path.substr(1, std::string::npos); // pendrive directory with full source directory with filename (substr removes root slash at the beggining)
+        make_dirs(source_path);
+        copy_file(source_path, target_path);
     }
 }
 
@@ -746,6 +777,10 @@ main(int          argc,
   int fanotify_fd;
   struct pollfd fds[FD_POLL_MAX];
 
+    if (argc > 0)
+        app_launch_dir = argv[0];
+    else app_launch_dir = app_name;
+
     char cwd[1024];
     std::string copy_dir = config.lookup("general.copy_directory");
     // check if copy directory is directory or exists
@@ -770,7 +805,7 @@ main(int          argc,
     }
     std::cout<<pendrive_dir<<std::endl;
 
-  	if (access("enc.key", F_OK) == -1)
+  	/*if (access("enc.key", F_OK) == -1)
 	{
 		printf("Please enter password to set\n");
 		char pass[128];
@@ -825,7 +860,7 @@ main(int          argc,
 				printf("FAILED TRY AGAIN\n");
 		}
 
-	}
+	}*/
 
   bool do_exit_procedures = false;
 
@@ -916,7 +951,6 @@ main(int          argc,
                 while (FAN_EVENT_OK (metadata, length))
                 {
                     add_file_to_list(metadata);
-                    //event_process (metadata);
                     close(metadata->fd);
                     metadata = FAN_EVENT_NEXT (metadata, length);
                 }
