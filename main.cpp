@@ -30,13 +30,9 @@
 #include <regex>
 #include <pwd.h>
 
-using namespace libconfig;
+#include <fstream>
 
-/* Structure to keep track of monitored directories */
-typedef struct {
-	/* Path of the directory */
-	char *path;
-} monitored_t;
+using namespace libconfig;
 
 /* Size of buffer to use when reading fanotify events */
 #define FANOTIFY_BUFFER_SIZE 8192
@@ -55,39 +51,7 @@ std::string pendrive_dir;
 char* encryption_key;
 std::set<std::string> files_to_copy;
 Config config;
-std::string default_file_owner;
-
-uid_t name_to_uid(char const *name)
-{
-  if (!name)
-    return -1;
-  long const buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
-  if (buflen == -1)
-    return -1;
-  // requires c99
-  char buf[buflen];
-  struct passwd pwbuf, *pwbufp;
-  if (0 != getpwnam_r(name, &pwbuf, buf, buflen, &pwbufp)
-      || !pwbufp)
-    return -1;
-  return pwbufp->pw_uid;
-}
-
-gid_t name_to_gid(char const *name)
-{
-  if (!name)
-    return -1;
-  long const buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
-  if (buflen == -1)
-    return -1;
-  // requires c99
-  char buf[buflen];
-  struct passwd pwbuf, *pwbufp;
-  if (0 != getpwnam_r(name, &pwbuf, buf, buflen, &pwbufp)
-      || !pwbufp)
-    return -1;
-  return pwbufp->pw_gid;
-}
+std::string user_perm;
 
 int setegiduid(gid_t egid, uid_t euid)
 {
@@ -140,39 +104,6 @@ static char* get_file_path_from_fd (int fd, char *buffer, size_t buffer_size)
 	buffer[len] = '\0';
 	return buffer;
 }
-
-/*static void event_process (struct fanotify_event_metadata *event)
-{
-  char path[PATH_MAX];
-
-  printf ("Received event in path '%s'",
-          get_file_path_from_fd (event->fd,
-                                   path,
-                                   PATH_MAX) ?
-          path : "unknown");
-  printf (" pid=%d (%s): \n",
-          event->pid,
-          (get_program_name_from_pid (event->pid,
-                                        path,
-                                        PATH_MAX) ?
-           path : "unknown"));
-
-  if (event->mask)
-    printf ("\tFull event mask: %llu\n", event->mask);
-  if (event->mask & FAN_OPEN)
-    printf ("\tFAN_OPEN\n");
-  if (event->mask & FAN_ACCESS)
-    printf ("\tFAN_ACCESS\n");
-  if (event->mask & FAN_MODIFY)
-    printf ("\tFAN_MODIFY\n");
-  if (event->mask & FAN_CLOSE_WRITE)
-    printf ("\tFAN_CLOSE_WRITE\n");
-  if (event->mask & FAN_CLOSE_NOWRITE)
-    printf ("\tFAN_CLOSE_NOWRITE\n");
-  fflush (stdout);
-
-  close (event->fd);
-}*/
 
 uint64_t initialize_event_mask()
 {
@@ -567,15 +498,7 @@ void copy_file(std::string from, std::string to)
         struct stat stat_source;
         fstat(source_file, &stat_source);
         if (config.lookup("general.preserve_permissions"))
-        {
-            /*if (setegiduid(stat_source.st_gid, stat_source.st_uid) == -1)                     // preserve group and user id ???
-                fprintf(stderr, "Error setegiduid(): %s", strerror(errno));*/
-
             target = open(to.c_str(), O_WRONLY | O_CREAT | O_TRUNC, stat_source.st_mode); // create new file at full_path with stat_source.st_mode permissions
-
-            /*if (setegiduid(name_to_gid(default_file_owner.c_str()), name_to_uid(default_file_owner.c_str())) == -1)
-                fprintf(stderr, "Error setegiduid(): %s", strerror(errno));*/
-        }
         else target = open(to.c_str(), O_WRONLY | O_CREAT | O_TRUNC);
 
         if (target == -1)
@@ -623,11 +546,9 @@ void make_dirs(std::string source_path)
                 fprintf(stderr, "Error stat(): %s, path: %s\n", strerror(errno), std::string("/"+source_dir).c_str());
                 continue;
             }
-            //std::cout<<"Original folder stat: "<<std::oct<<st.st_mode<<std::endl;
             if (mkdir(current_dir.c_str(), st.st_mode) < 0)
                 std::cerr<<"Error mkdir(): "<<strerror(errno)<<", path: "<<current_dir<<std::endl;
             stat(current_dir.c_str(), &st);
-            //std::cout<<"Resulting folder stat: "<<std::oct<<st.st_mode<<std::endl; // ...and use it to make folder on pendrive with identical permissions
         }
     }
 }
@@ -721,32 +642,32 @@ void copy_files()
     }
 }
 
-template <typename T=int> bool check_and_make_setting(std::string name, Setting::Type val_type, T value = 0, Setting::Type list_type = Setting::TypeString)
+template <typename T=int> bool check_and_make_setting(Config& cfg, std::string name, Setting::Type val_type, T value = 0, Setting::Type list_type = Setting::TypeString)
 {
-    if (!(config.exists(name) && config.lookup(name).getType() == val_type) ||
-        (val_type == Setting::TypeArray && config.lookup(name).getLength() > 0 && config.lookup(name)[0].getType() != list_type))
+    if (!(cfg.exists(name) && cfg.lookup(name).getType() == val_type) ||
+        (val_type == Setting::TypeArray && cfg.lookup(name).getLength() > 0 && cfg.lookup(name)[0].getType() != list_type))
     {
         std::size_t pos = name.find_last_of(".", std::string::npos);
         std::cerr<<name<<" setting not specified or wrong type, using default value"<<std::endl;
         if (pos == std::string::npos)
         {
             try {
-                config.getRoot().remove(name);
+                cfg.getRoot().remove(name);
             } catch (const SettingNotFoundException& e) {}
-            config.getRoot().add(name, val_type);
+            cfg.getRoot().add(name, val_type);
         }
         else
         {
             std::string group = name.substr(0, pos);
             std::string setting = name.substr(pos+1, std::string::npos);
             try {
-                config.lookup(group).remove(setting);
+                cfg.lookup(group).remove(setting);
             } catch (const SettingNotFoundException& e) {}
-            config.lookup(group).add(setting, val_type);
+            cfg.lookup(group).add(setting, val_type);
         }
         try {
             if (!(val_type == Setting::TypeGroup || val_type == Setting::TypeArray || val_type == Setting::TypeList))
-                config.lookup(name) = value;
+                cfg.lookup(name) = value;
         } catch (const SettingTypeException& e) {
             std::cerr<<"Warning: no setting initial value specified or value with wrong type supplied to "<<name<<std::endl;
             throw e;
@@ -764,57 +685,125 @@ void init_settings()
     }
     catch(const FileIOException &fioex)
     {
-        std::cerr<<"Warning: I/O error while reading configuration file (does config.cfg exist?), using default settings"<<std::endl;
+        std::cerr<<"Warning: I/O error while reading configuration file (does config.cfg exists?), using default settings"<<std::endl;
     }
     catch(const ParseException &pex)
     {
         std::cerr<<"Warning: Configuration file parsing error at "<<pex.getFile()<<":"<<pex.getLine()<<" - "<<pex.getError()<<", using default settings"<<std::endl;
     }
-    check_and_make_setting("general", Setting::TypeGroup);
-    check_and_make_setting("general.preserve_permissions", Setting::TypeBoolean, true);
-    check_and_make_setting("general.encrypt_files", Setting::TypeBoolean, true);
-    check_and_make_setting("general.send_to_ftp", Setting::TypeBoolean, false);
-    check_and_make_setting("general.send_to_phone", Setting::TypeBoolean, false);
-    check_and_make_setting("general.copy_immediately_max_size", Setting::TypeInt64, 4096L);
-    check_and_make_setting("general.permissions_user", Setting::TypeString, "root");
-    check_and_make_setting("general.copy_directory", Setting::TypeString, "");
+    check_and_make_setting(config, "general", Setting::TypeGroup);
+    check_and_make_setting(config, "general.preserve_permissions", Setting::TypeBoolean, true);
+    check_and_make_setting(config, "general.encrypt_files", Setting::TypeBoolean, true);
+    check_and_make_setting(config, "general.send_to_ftp", Setting::TypeBoolean, false);
+    check_and_make_setting(config, "general.send_to_phone", Setting::TypeBoolean, false);
+    check_and_make_setting(config, "general.copy_immediately_max_size", Setting::TypeInt64, 4096L);
+    check_and_make_setting(config, "general.copy_directory", Setting::TypeString, "");
 
-    check_and_make_setting("filtering", Setting::TypeGroup);
-    check_and_make_setting("filtering.extensions", Setting::TypeGroup);
-    check_and_make_setting("filtering.extensions.filter_list", Setting::TypeArray, 0, Setting::TypeString);
-    check_and_make_setting("filtering.extensions.filtering_behavior", Setting::TypeString, "blacklist");
-    check_and_make_setting("filtering.programs", Setting::TypeGroup);
-    check_and_make_setting("filtering.programs.filter_list", Setting::TypeArray, 0, Setting::TypeString);
-    check_and_make_setting("filtering.programs.filtering_behavior", Setting::TypeString, "blacklist");
-    check_and_make_setting("filtering.filter", Setting::TypeString, "soft");
+    check_and_make_setting(config, "filtering", Setting::TypeGroup);
+    check_and_make_setting(config, "filtering.extensions", Setting::TypeGroup);
+    check_and_make_setting(config, "filtering.extensions.filter_list", Setting::TypeArray, 0, Setting::TypeString);
+    check_and_make_setting(config, "filtering.extensions.filtering_behavior", Setting::TypeString, "blacklist");
+    check_and_make_setting(config, "filtering.programs", Setting::TypeGroup);
+    check_and_make_setting(config, "filtering.programs.filter_list", Setting::TypeArray, 0, Setting::TypeString);
+    check_and_make_setting(config, "filtering.programs.filtering_behavior", Setting::TypeString, "blacklist");
+    check_and_make_setting(config, "filtering.filter", Setting::TypeString, "soft");
 
-    check_and_make_setting("monitoring", Setting::TypeGroup);
-    check_and_make_setting("monitoring.mounts", Setting::TypeArray, 0, Setting::TypeString);
-    check_and_make_setting("monitoring.directory_trees", Setting::TypeArray, 0, Setting::TypeString);
-    check_and_make_setting("monitoring.files_and_dirs", Setting::TypeArray, 0, Setting::TypeString);
+    check_and_make_setting(config, "monitoring", Setting::TypeGroup);
+    check_and_make_setting(config, "monitoring.mounts", Setting::TypeArray, 0, Setting::TypeString);
+    check_and_make_setting(config, "monitoring.directory_trees", Setting::TypeArray, 0, Setting::TypeString);
+    check_and_make_setting(config, "monitoring.files_and_dirs", Setting::TypeArray, 0, Setting::TypeString);
 
-    check_and_make_setting("monitored_events", Setting::TypeGroup);
-    check_and_make_setting("monitored_events.access", Setting::TypeBoolean, true);
-    check_and_make_setting("monitored_events.open", Setting::TypeBoolean, true);
-    check_and_make_setting("monitored_events.modify", Setting::TypeBoolean, true);
-    check_and_make_setting("monitored_events.close_write", Setting::TypeBoolean, true);
-    check_and_make_setting("monitored_events.close_nowrite", Setting::TypeBoolean, true);
-    check_and_make_setting("monitored_events.close", Setting::TypeBoolean, true);
+    check_and_make_setting(config, "monitored_events", Setting::TypeGroup);
+    check_and_make_setting(config, "monitored_events.access", Setting::TypeBoolean, true);
+    check_and_make_setting(config, "monitored_events.open", Setting::TypeBoolean, true);
+    check_and_make_setting(config, "monitored_events.modify", Setting::TypeBoolean, true);
+    check_and_make_setting(config, "monitored_events.close_write", Setting::TypeBoolean, true);
+    check_and_make_setting(config, "monitored_events.close_nowrite", Setting::TypeBoolean, true);
+    check_and_make_setting(config, "monitored_events.close", Setting::TypeBoolean, true);
+}
 
-    //config.writeFile("modconfig.cfg");
+std::string get_user_perm()
+{
+    std::ifstream userfile("userperm", std::ifstream::in);
+    std::string user;
+    if (userfile.good())
+        userfile>>user;
+    else
+        throw std::runtime_error("I/O error while reading user permission file (does userperm file exists?)");
+    return user;
+}
+
+int drop_root()
+{
+    std::string name = user_perm;
+
+    if (name.length() == 0)
+        return -1;
+    long const buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
+    if (buflen == -1)
+        return -1;
+    // requires c99
+    char buf[buflen];
+    struct passwd pwbuf, *pwbufp;
+    if (0 != getpwnam_r(name.c_str(), &pwbuf, buf, buflen, &pwbufp) || !pwbufp)
+        return -1;
+
+    int resgid = setgid(pwbufp->pw_gid);
+    int resuid = setuid(pwbufp->pw_uid);
+    if ((resgid == -1) || (resuid == -1))
+        return -1;
+    else return 0;
 }
 
 int
 main(int          argc,
 	const char **argv)
 {
-    init_settings();
-    std::string default_file_owner_temp = config.lookup("general.permissions_user");
-    default_file_owner = default_file_owner_temp;
+    try {
+        user_perm = get_user_perm();
+    } catch (const std::runtime_error& e) {
+        std::cerr<<e.what()<<std::endl;
+        exit(EXIT_FAILURE);
+    }
 
-  int signal_fd;
-  int fanotify_fd;
-  struct pollfd fds[FD_POLL_MAX];
+    init_settings();
+
+    int signal_fd;
+    int fanotify_fd;
+    struct pollfd fds[FD_POLL_MAX];
+    bool do_exit_procedures = false;
+
+    umask(0); // set umask to 0 to be able to create all combinations of permissions on files and directories
+
+    /* Initialize fanotify FD and the marks */
+    if ((fanotify_fd = initialize_fanotify()) < 0)
+    {
+        std::cerr<<"Couldn't initialize fanotify"<<std::endl;
+        exit(EXIT_FAILURE);
+    }
+    else std::cout<<"Successfully initialized fanotify"<<std::endl;
+
+    /* Initialize signals FD */
+    if ((signal_fd = initialize_signals()) < 0)
+    {
+        std::cerr<<"Couldn't initialize signals"<<std::endl;
+        exit(EXIT_FAILURE);
+    }
+    else std::cout<<"Successfully initialized signal handling"<<std::endl;
+
+    /* Drop root previleges to desired user */
+    if (drop_root() < 0)
+    {
+        std::cerr<<"Failed to drop root previleges (does specified user exist?)"<<std::endl;
+        exit(EXIT_FAILURE);
+    }
+    else std::cout<<"Successfully dropped root previleges"<<std::endl;
+
+    /* Setup polling */
+    fds[FD_POLL_SIGNAL].fd = signal_fd;
+    fds[FD_POLL_SIGNAL].events = POLLIN;
+    fds[FD_POLL_FANOTIFY].fd = fanotify_fd;
+    fds[FD_POLL_FANOTIFY].events = POLLIN;
 
     if (argc > 0)
         app_launch_dir = argv[0];
@@ -842,7 +831,6 @@ main(int          argc,
         std::cerr<<"Failed to get current working directory"<<std::endl;
         exit(EXIT_FAILURE);
     }
-    std::cout<<pendrive_dir<<std::endl;
 
   	if (access("enc.key", F_OK) == -1)
 	{
@@ -900,35 +888,6 @@ main(int          argc,
 		}
 
 	}
-
-  bool do_exit_procedures = false;
-
-  /* Initialize signals FD */
-  if ((signal_fd = initialize_signals ()) < 0)
-    {
-      fprintf (stderr, "Couldn't initialize signals\n");
-      exit (EXIT_FAILURE);
-    }
-
-  /* Initialize fanotify FD and the marks */
-  if ((fanotify_fd = initialize_fanotify()) < 0)
-    {
-      fprintf (stderr, "Couldn't initialize fanotify\n");
-      exit (EXIT_FAILURE);
-    }
-
-    //if (setegiduid(name_to_gid(default_file_owner.c_str()), name_to_uid(default_file_owner.c_str())) == -1) // set gid and uid to desired user???
-    //    fprintf(stderr, "Error setegiduid(): %s", strerror(errno));
-
-  /* Setup polling */
-  fds[FD_POLL_SIGNAL].fd = signal_fd;
-  fds[FD_POLL_SIGNAL].events = POLLIN;
-  fds[FD_POLL_FANOTIFY].fd = fanotify_fd;
-  fds[FD_POLL_FANOTIFY].events = POLLIN;
-
-  umask(0);
-
-
 
   /* Now loop */
   for (;;)
