@@ -53,56 +53,41 @@ std::set<std::string> files_to_copy;
 Config config;
 std::string user_perm;
 
-int setegiduid(gid_t egid, uid_t euid)
+std::string get_program_name_from_pid(int pid)
 {
-    int resgid = setegid(egid);
-    int resuid = seteuid(euid);
-    if ((resgid == -1) || (resuid == -1))
-        return -1;
-    else return 0;
+    std::string program_name;
+    std::string path = std::string("/proc/") + std::to_string(pid) + std::string("/cmdline");
+    std::ifstream procfile(path, std::ifstream::in);
+    if (procfile.good())
+    {
+        procfile>>program_name;
+        if (program_name.length() > 0)
+        {
+            std::size_t pos = program_name.find('\0');
+            if (pos != std::string::npos)
+                program_name.erase(pos, std::string::npos);
+            pos = program_name.find("^@");
+            if (pos != std::string::npos)
+                program_name.erase(pos, std::string::npos);
+        }
+    }
+	return program_name;
 }
 
-static std::string get_program_name_from_pid (int pid)
+std::string get_file_path_from_fd(int fd)
 {
+    ssize_t len;
     char buffer[PATH_MAX];
-	int fd;
-	ssize_t len;
-	char *aux;
-
-	/* Try to get program name by PID */
-	sprintf(buffer, "/proc/%d/cmdline", pid);
-	if ((fd = open(buffer, O_RDONLY)) < 0)
-		return std::string("");
-
-	/* Read file contents into buffer */
-	if ((len = read(fd, buffer, PATH_MAX - 1)) <= 0)
-	{
-		close(fd);
-		return std::string("");
-	}
-	close(fd);
-
-	buffer[len] = '\0';
-	aux = strstr(buffer, "^@");
-	if (aux)
-		*aux = '\0';
-
-	return std::string(buffer);
-}
-
-static char* get_file_path_from_fd (int fd, char *buffer, size_t buffer_size)
-{
-	ssize_t len;
 
 	if (fd <= 0)
 		return NULL;
 
 	sprintf(buffer, "/proc/self/fd/%d", fd);
-	if ((len = readlink(buffer, buffer, buffer_size - 1)) < 0)
+	if ((len = readlink(buffer, buffer, PATH_MAX - 1)) < 0)
 		return NULL;
 
 	buffer[len] = '\0';
-	return buffer;
+	return std::string(buffer);
 }
 
 uint64_t initialize_event_mask()
@@ -576,10 +561,7 @@ bool is_allowed_by_paths(std::string source_path)
 
 void add_file_to_list(const fanotify_event_metadata* metadata)
 {
-    char source_path_c[PATH_MAX];
-    get_file_path_from_fd(metadata->fd, source_path_c, PATH_MAX);
-    std::string source_path(source_path_c);
-
+    std::string source_path = get_file_path_from_fd(metadata->fd);
     enum FILTER_SOFTNESS {FILTER_SOFT, FILTER_HARD};
     FILTER_SOFTNESS softness;
     std::string filter_softness = config.lookup("filtering.filter");
@@ -832,7 +814,7 @@ main(int          argc,
         exit(EXIT_FAILURE);
     }
 
-  	if (access("enc.key", F_OK) == -1)
+  	/*if (access("enc.key", F_OK) == -1)
 	{
 		printf("Please enter password to set\n");
 		char pass[128];
@@ -886,8 +868,7 @@ main(int          argc,
 			else
 				printf("FAILED TRY AGAIN\n");
 		}
-
-	}
+	}*/
 
   /* Now loop */
   for (;;)
