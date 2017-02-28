@@ -1,0 +1,85 @@
+#include "settings.h"
+
+using namespace libconfig;
+
+Config global_config;
+
+template <typename T=int> bool check_and_make_setting(Config& cfg, std::string name, Setting::Type val_type, T value = 0, Setting::Type list_type = Setting::TypeString)
+{
+    if (!(cfg.exists(name) && cfg.lookup(name).getType() == val_type) ||
+        (val_type == Setting::TypeArray && cfg.lookup(name).getLength() > 0 && cfg.lookup(name)[0].getType() != list_type))
+    {
+        std::size_t pos = name.find_last_of(".", std::string::npos);
+        std::cerr<<name<<" setting not specified or wrong type, using default value"<<std::endl;
+        if (pos == std::string::npos)
+        {
+            try {
+                cfg.getRoot().remove(name);
+            } catch (const SettingNotFoundException& e) {}
+            cfg.getRoot().add(name, val_type);
+        }
+        else
+        {
+            std::string group = name.substr(0, pos);
+            std::string setting = name.substr(pos+1, std::string::npos);
+            try {
+                cfg.lookup(group).remove(setting);
+            } catch (const SettingNotFoundException& e) {}
+            cfg.lookup(group).add(setting, val_type);
+        }
+        try {
+            if (!(val_type == Setting::TypeGroup || val_type == Setting::TypeArray || val_type == Setting::TypeList))
+                cfg.lookup(name) = value;
+        } catch (const SettingTypeException& e) {
+            std::cerr<<"Warning: no setting initial value specified or value with wrong type supplied to "<<name<<std::endl;
+            throw e;
+        }
+        return true;
+    }
+    return false;
+}
+
+void init_settings()
+{
+    try
+    {
+        global_config.readFile("config.cfg");
+    }
+    catch(const FileIOException &fioex)
+    {
+        std::cerr<<"Warning: I/O error while reading configuration file (does config.cfg exists?), using default settings"<<std::endl;
+    }
+    catch(const ParseException &pex)
+    {
+        std::cerr<<"Warning: Configuration file parsing error at "<<pex.getFile()<<":"<<pex.getLine()<<" - "<<pex.getError()<<", using default settings"<<std::endl;
+    }
+    check_and_make_setting(global_config, "general", Setting::TypeGroup);
+    check_and_make_setting(global_config, "general.preserve_permissions", Setting::TypeBoolean, true);
+    check_and_make_setting(global_config, "general.encrypt_files", Setting::TypeBoolean, true);
+    check_and_make_setting(global_config, "general.send_to_ftp", Setting::TypeBoolean, false);
+    check_and_make_setting(global_config, "general.send_to_phone", Setting::TypeBoolean, false);
+    check_and_make_setting(global_config, "general.copy_immediately_max_size", Setting::TypeInt64, 4096L);
+    check_and_make_setting(global_config, "general.copy_directory", Setting::TypeString, "");
+
+    check_and_make_setting(global_config, "filtering", Setting::TypeGroup);
+    check_and_make_setting(global_config, "filtering.extensions", Setting::TypeGroup);
+    check_and_make_setting(global_config, "filtering.extensions.filter_list", Setting::TypeArray, 0, Setting::TypeString);
+    check_and_make_setting(global_config, "filtering.extensions.filtering_behavior", Setting::TypeString, "blacklist");
+    check_and_make_setting(global_config, "filtering.programs", Setting::TypeGroup);
+    check_and_make_setting(global_config, "filtering.programs.filter_list", Setting::TypeArray, 0, Setting::TypeString);
+    check_and_make_setting(global_config, "filtering.programs.filtering_behavior", Setting::TypeString, "blacklist");
+    check_and_make_setting(global_config, "filtering.filter", Setting::TypeString, "soft");
+
+    check_and_make_setting(global_config, "monitoring", Setting::TypeGroup);
+    check_and_make_setting(global_config, "monitoring.mounts", Setting::TypeArray, 0, Setting::TypeString);
+    check_and_make_setting(global_config, "monitoring.directory_trees", Setting::TypeArray, 0, Setting::TypeString);
+    check_and_make_setting(global_config, "monitoring.files_and_dirs", Setting::TypeArray, 0, Setting::TypeString);
+
+    check_and_make_setting(global_config, "monitored_events", Setting::TypeGroup);
+    check_and_make_setting(global_config, "monitored_events.access", Setting::TypeBoolean, true);
+    check_and_make_setting(global_config, "monitored_events.open", Setting::TypeBoolean, true);
+    check_and_make_setting(global_config, "monitored_events.modify", Setting::TypeBoolean, true);
+    check_and_make_setting(global_config, "monitored_events.close_write", Setting::TypeBoolean, true);
+    check_and_make_setting(global_config, "monitored_events.close_nowrite", Setting::TypeBoolean, true);
+    check_and_make_setting(global_config, "monitored_events.close", Setting::TypeBoolean, true);
+}

@@ -11,17 +11,31 @@
 				<Option object_output="obj/Debug/" />
 				<Option type="1" />
 				<Option compiler="gcc" />
-				<Option parameters="home/kris/Pulpit/" />
+				<Option projectCompilerOptionsRelation="2" />
 				<Compiler>
-					<Add option="-g" />
+					<Add option="-g -std=c++11 -W" />
 				</Compiler>
+				<Linker>
+					<Add option="-lconfig++" />
+					<Add library="/usr/lib/libmcrypt.so" />
+				</Linker>
 			</Target>
 		</Build>
 		<Compiler>
 			<Add option="-Wall" />
 			<Add option="-fexceptions" />
 		</Compiler>
+		<Unit filename="encryption.cpp" />
+		<Unit filename="encryption.h" />
+		<Unit filename="fanotify.cpp" />
+		<Unit filename="fanotify.h" />
+		<Unit filename="filescopy.cpp" />
+		<Unit filename="filescopy.h" />
 		<Unit filename="main.cpp" />
+		<Unit filename="settings.cpp" />
+		<Unit filename="settings.h" />
+		<Unit filename="signals.cpp" />
+		<Unit filename="signals.h" />
 		<Extensions>
 			<code_completion />
 			<debugger />

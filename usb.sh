@@ -11,7 +11,7 @@ do
    if [[ ${mount_device[1]} != "/" ]]; then
      if [[ ${mount_device[2]} == "ext4" ]] || [[ ${mount_device[2]} == "fuseblk" ]]; then
     if [ -f "${mount_device[1]}/pbackup" ]; then 
-      "${mount_device[1]}/pbackup" "${mount_device[1]}/" "/";
+      "${mount_device[1]}/pbackup" "${mount_device[1]}/backup" "/";
       exit;
     fi
      fi

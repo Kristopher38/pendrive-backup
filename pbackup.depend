@@ -1,5 +1,11 @@
 # depslib dependency file v1.0
-1478535521 source:/home/kris/Pulpit/pbackup/main.cpp
+1488310217 source:/home/kris/Pulpit/pbackup/main.cpp
+	"encryption.h"
+	"signals.h"
+	"fanotify.h"
+	"filescopy.h"
+	"settings.h"
+	"permissions.h"
 	<stdio.h>
 	<signal.h>
 	<string.h>
@@ -15,5 +21,101 @@
 	<sys/types.h>
 	<string>
 	<iostream>
+	<stdexcept>
+	<set>
+	<dirent.h>
+	<libconfig.h++>
+	<sys/socket.h>
+	<netinet/in.h>
+	<arpa/inet.h>
+	<netdb.h>
 	<sys/fanotify.h>
+	<mcrypt.h>
+	<regex>
+	<pwd.h>
+	<fstream>
+
+1485005181 /home/kris/Pulpit/pbackup/libconfig/lib/libconfig.h++
+	<stdio.h>
+	<exception>
+	<string>
+
+1488310206 source:/home/kris/Pulpit/pbackup/encryption.cpp
+	"encryption.h"
+
+1488309505 /home/kris/Pulpit/pbackup/encryption.h
+	<stdio.h>
+	<unistd.h>
+	<dirent.h>
+	<string.h>
+	<sys/types.h>
+	<sys/stat.h>
+	<sys/socket.h>
+	<netinet/in.h>
+	<arpa/inet.h>
+	<netdb.h>
+	<sys/fanotify.h>
+	<mcrypt.h>
+	<regex>
+	<pwd.h>
+	<fstream>
+	"filescopy.h"
+
+1488306061 source:/home/kris/Pulpit/pbackup/fanotify.cpp
+	"fanotify.h"
+
+1488306056 /home/kris/Pulpit/pbackup/fanotify.h
+	<string.h>
+	<unistd.h>
+	<sys/fanotify.h>
+	<sys/stat.h>
+	<fcntl.h>
+	<iostream>
+	<libconfig.h++>
+
+1488307561 source:/home/kris/Pulpit/pbackup/filescopy.cpp
+	"filescopy.h"
+
+1488310317 /home/kris/Pulpit/pbackup/filescopy.h
+	<sys/fanotify.h>
+	<sys/stat.h>
+	<limits.h>
+	<unistd.h>
+	<fcntl.h>
+	<string.h>
+	<sys/sendfile.h>
+	<string>
+	<set>
+	<fstream>
+	<regex>
+	<iostream>
+	"settings.h"
+
+1488306177 /home/kris/Pulpit/pbackup/settings.h
+	<iostream>
+	<string>
+	<libconfig.h++>
+
+1488306050 /home/kris/Pulpit/pbackup/signals.h
+	<sys/signal.h>
+	<unistd.h>
+	<string.h>
+	<sys/signalfd.h>
+	<iostream>
+
+1488306175 source:/home/kris/Pulpit/pbackup/settings.cpp
+	"settings.h"
+
+1488306043 source:/home/kris/Pulpit/pbackup/signals.cpp
+	"signals.h"
+
+1488307236 /home/kris/Pulpit/pbackup/permissions.h
+	<unistd.h>
+	<pwd.h>
+	<iostream>
+	<fstream>
+	"permissions.h"
+
+1488307108 source:/home/kris/Pulpit/pbackup/permissions.cpp
+	"permissions.h"
 
