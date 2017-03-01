@@ -422,7 +422,10 @@ bool FTPConnection::RetryConnection()
 	printf ("Connection failed! Reconnecting...\n");
 	
 	if(Connect())
+	{
+		iCurrentRetry = 0;
 		return true;
+	}
 	else
 	  return RetryConnection();
 }
