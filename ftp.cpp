@@ -417,8 +417,10 @@ bool FTPConnection::RetryConnection()
 	iCurrentRetry++;
 	
 	if(iCurrentRetry > iMaxRetry)
+	{
+		iCurrentRetry = 0;
 		return false;
-	
+	}
 	printf ("Connection failed! Reconnecting...\n");
 	
 	if(Connect())
