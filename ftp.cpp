@@ -160,7 +160,8 @@ bool FTPConnection::SendData(const char* tpl, ...)
 	
 	if(szBuffer != NULL)
 	{
-		if(strstr(szBuffer, "Operation not permitted"))
+		std::string ServerMessage = std::string(szBuffer);
+		if(string.find("500") != 0)
 			return false;
 		else
 			return true;
@@ -179,13 +180,13 @@ bool FTPConnection::Login()
 	
 	if(SendData("CWD %s\r\n", "TEST"))
 	{
-		if(strstr(szBuffer, "Please login with USER and PASS"))
+		if(std::string(szBuffer).find("530"))
 			if(SendData("USER %s\r\n", szLogin))
-				if(strstr(szBuffer, "OK. Password required"))
+				if(std::string(szBuffer).find("331") == 0)
 					if(SendData("PASS %s\r\n", szPassword))
-						if(strstr(szBuffer, "230 OK. "))
+						if(std::string(szBuffer).find("230") == 0)
 							return true;
-						else if(strstr(szBuffer,"Login authentication failed"))
+						else if(std::string(szBuffer).find("530") == 0)
 							return false;
 				else
 					return true;
@@ -207,9 +208,10 @@ int FTPConnection::UploadFile(const char* file)
 	}
 	if (!SendData("PASV\r\n"))
 		return CONNECTION_TIMEOUT;
-	if(strstr(szBuffer, "Please login with USER and PASS") || strstr(szBuffer, "You aren't logged in"))
+		
+	if(std::string(szBuffer).find("530"))
 		return LOGIN_REQUIRED;
-	if (!strstr(szBuffer, "Entering Passive Mode "))
+	if (std::string(szBuffer).find("227") != 0)
 		return PASV_MODE_ERROR;
 	
 	const char *p1 = strstr(szBuffer, "(") + 1;
@@ -287,7 +289,7 @@ int FTPConnection::UploadFile(const char* file)
 	szBuffer = ReadSocket(iSocket, iTimeout);
 	if(szBuffer == NULL)
 		return CONNECTION_TIMEOUT;
-	if (!strstr(szBuffer, "File successfully transferred"))
+	if (!strstr(szBuffer, "226"))
 		return PASV_MODE_ERROR;
 	return NO_ERROR;
 }
@@ -301,16 +303,16 @@ int FTPConnection::CreateDirectory(const char* directory)
 	
 		if(SendData("MKD %s\r\n", directory))
 	{
-		if(strstr(szBuffer, "Please login with USER and PASS") || strstr(szBuffer, "You aren't logged in"))
+		if(std::string(szBuffer).find("530"))
 			return LOGIN_REQUIRED;
-		if(strstr(szBuffer, "Can't create directory: File exists"))
+		if(std::string(szBuffer).find("550") == 0 && strstr(szBuffer, "exist"))
 			return DIRECTORY_EXIST;
-		if(strstr(szBuffer, "The directory was successfully created"))
+		if(std::string(szBuffer).find("257") == 0)
 		{
 			bLastCommand = true;
 			return NO_ERROR;
 		}
-		if(strstr(szBuffer, "No such file or directory"))
+		if(std::string(szBuffer).find("550") == 0)
 			return DIRECTORY_DOSENT_EXIST;
 	}
 	else
@@ -326,9 +328,9 @@ int FTPConnection::GoToDirectory(const char* directory, bool create_if_doenst_ex
 	
 	if(SendData("CWD %s\r\n", directory))
 	{
-		if(strstr(szBuffer, "Please login with USER and PASS") || strstr(szBuffer, "You aren't logged in"))
+		if(std::string(szBuffer).find("530"))
 			return LOGIN_REQUIRED;
-		if(strstr(szBuffer, "No such file or directory"))
+		if(std::string(szBuffer).find("550") == 0 && !strstr(szBuffer, "exist"))
 		{
 			if(!create_if_doenst_exist)
 				return DIRECTORY_DOSENT_EXIST;
@@ -372,7 +374,7 @@ int FTPConnection::GoToDirectory(const char* directory, bool create_if_doenst_ex
 				}
 			}
 		}
-		if(strstr(szBuffer, "250 OK. Current directory"))
+		if(std::string(szBuffer).find("250") == 0)
 		{
 			bLastCommand = true;
 			return NO_ERROR;
