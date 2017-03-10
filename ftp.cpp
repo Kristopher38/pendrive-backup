@@ -161,7 +161,7 @@ bool FTPConnection::SendData(const char* tpl, ...)
 	if(szBuffer != NULL)
 	{
 		std::string ServerMessage = std::string(szBuffer);
-		if(string.find("500") != 0)
+		if(ServerMessage.find("500") == 0)
 			return false;
 		else
 			return true;
