@@ -4,33 +4,43 @@ using namespace libconfig;
 
 Config global_config;
 
+/* Sprawdza w konfiguracji 'cfg' czy dana opcja o nazwie 'name' i typie 'val_type' istnieje (a jeśli jest listą, to czy typ jej elementów jest taki sam jak 'list_type'), jeśli nie to usuwa wadliwą opcję i tworzy nową o właściwym typie z wartością domyślną 'value'. Zwraca true w przypadku konieczności "naprawienia" opcji, false gdy opcja była zdefiniowana poprawnie */
 template <typename T=int> bool check_and_make_setting(Config& cfg, std::string name, Setting::Type val_type, T value = 0, Setting::Type list_type = Setting::TypeString)
 {
+    /* Sprawdzenie czy opcja istnieje, czy jest właściwego typu, i czy elementy listy (jeśli jest listą) są właściwego typu - jeśli coś jest nie tak, kontynuuj */
     if (!(cfg.exists(name) && cfg.lookup(name).getType() == val_type) ||
         (val_type == Setting::TypeArray && cfg.lookup(name).getLength() > 0 && cfg.lookup(name)[0].getType() != list_type))
     {
-        std::size_t pos = name.find_last_of(".", std::string::npos);
         std::cerr<<name<<" setting not specified or wrong type, using default value"<<std::endl;
+
+        std::size_t pos = name.find_last_of(".", std::string::npos);
+        /* Jeśli opcja nie ma rodzica */
         if (pos == std::string::npos)
         {
+            /* usuń wadliwą opcję */
             try {
                 cfg.getRoot().remove(name);
-            } catch (const SettingNotFoundException& e) {}
-            cfg.getRoot().add(name, val_type);
+            } catch (const SettingNotFoundException& e) {} /* ciche łapanie ewentualnych wyjątków o nieistnieniu opcji, nie obchodzi nas czy opcja istnieje czy nie, ma zostać usunięta */
+            cfg.getRoot().add(name, val_type); /* i utwórz ją z poprawnym typem */
         }
+        /* Jeśli opcja ma rodzica */
         else
         {
-            std::string group = name.substr(0, pos);
-            std::string setting = name.substr(pos+1, std::string::npos);
+            std::string group = name.substr(0, pos); /* ścieżka rodzica opcji */
+            std::string setting = name.substr(pos+1, std::string::npos); /* nazwa opcji */
+            /* Usuń wadliwą opcję */
             try {
                 cfg.lookup(group).remove(setting);
-            } catch (const SettingNotFoundException& e) {}
-            cfg.lookup(group).add(setting, val_type);
+            } catch (const SettingNotFoundException& e) {} /* ciche łapanie wyjątków jw. */
+            cfg.lookup(group).add(setting, val_type); /* i utwórz ją z poprawnym typem */
         }
+
         try {
+            /* Sprawdzenie czy opcja nie jest grupą, tablicą lub listą i nadanie jej domyślnej wartości */
             if (!(val_type == Setting::TypeGroup || val_type == Setting::TypeArray || val_type == Setting::TypeList))
                 cfg.lookup(name) = value;
         } catch (const SettingTypeException& e) {
+            /* Wyjątek rzucany jako informacja dla programisty o błędnym typie wartości domyślnej dla danej opcji */
             std::cerr<<"Warning: no setting initial value specified or value with wrong type supplied to "<<name<<std::endl;
             throw e;
         }
@@ -39,8 +49,9 @@ template <typename T=int> bool check_and_make_setting(Config& cfg, std::string n
     return false;
 }
 
-void init_settings()
+void init_settings() /* Inicjalizacja konfiguracji programu */
 {
+    /* Odczyt z pliku konfiguracyjnego config.cfg, w przypadku błędów odczytu program użyje wartości domyślnych */
     try
     {
         global_config.readFile("config.cfg");
@@ -53,6 +64,8 @@ void init_settings()
     {
         std::cerr<<"Warning: Configuration file parsing error at "<<pex.getFile()<<":"<<pex.getLine()<<" - "<<pex.getError()<<", using default settings"<<std::endl;
     }
+
+    /* Sprawdzenie poprawności wszystkich opcji konfiguracyjnych (czy istnieje, czy ma poprawny typ) - po więcej informacji dot. poszczególnych opcji patrz dokumentacja pliku konfiguracyjnego */
     check_and_make_setting(global_config, "general", Setting::TypeGroup);
     check_and_make_setting(global_config, "general.preserve_permissions", Setting::TypeBoolean, true);
     check_and_make_setting(global_config, "general.encrypt_files", Setting::TypeBoolean, true);

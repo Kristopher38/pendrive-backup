@@ -14,8 +14,9 @@
 #include "filescopy.h"
 #include "settings.h"
 #include "permissions.h"
+#include "ftp.h"
 
-/* Enumerate list of FDs to poll */
+/* Lista deskryptorów do odpytywania */
 enum {
 	FD_POLL_SIGNAL = 0,
 	FD_POLL_FANOTIFY,
@@ -26,16 +27,18 @@ int
 main(int          argc,
 	const char **argv)
 {
+    /* Inicjalizacja ustawień z pliku konfiguracyjnego */
     init_settings();
 
-    int signal_fd;
-    int fanotify_fd;
-    struct pollfd fds[FD_POLL_MAX];
-    bool do_exit_procedures = false;
+    int signal_fd;                      /* Deskryptor sygnałów */
+    int fanotify_fd;                    /* Deskryptor fanotify */
+    struct pollfd fds[FD_POLL_MAX];     /* lista deskryptorów do odpytywania */
+    bool do_exit_procedures = false;    /* sposób zakończenia programu */
 
-    umask(0); // set umask to 0 to be able to create all combinations of permissions on files and directories
+    /* Ustawienie umaski na 0 aby można było tworzyć wszystkie kombinacje uprawnień na plikach i katalogach */
+    umask(0);
 
-    /* Initialize fanotify FD and the marks */
+    /* Inicjalizacja deskryptora fanotify i monitorowanych ścieżek */
     if ((fanotify_fd = initialize_fanotify()) < 0)
     {
         std::cerr<<"Couldn't initialize fanotify"<<std::endl;
@@ -43,7 +46,7 @@ main(int          argc,
     }
     else std::cout<<"Successfully initialized fanotify"<<std::endl;
 
-    /* Initialize signals FD */
+    /* Inicjalizacja deskryptora sygnałów */
     if ((signal_fd = initialize_signals()) < 0)
     {
         std::cerr<<"Couldn't initialize signals"<<std::endl;
@@ -51,12 +54,14 @@ main(int          argc,
     }
     else std::cout<<"Successfully initialized signal handling"<<std::endl;
 
+    /* Inicjalizacja ustawień kopiowania plików */
     if (initialize_filecopier(argc, argv) < 0)
         exit(EXIT_FAILURE);
 
-    password_process();
+    //password_process();
+    encryption_key = "temppass";
 
-	/* Drop root previleges to desired user */
+	/* Schodzenie z uprawnień roota do uprawnień użytkownika ustawionego w konfiguracji */
     if (drop_root(get_user_perm_name()) < 0)
     {
         std::cerr<<"Failed to drop root previleges (does specified user exist?)"<<std::endl;
@@ -64,16 +69,16 @@ main(int          argc,
     }
     else std::cout<<"Successfully dropped root previleges"<<std::endl;
 
-    /* Setup polling */
+    /* Ustawienie odpytywania deskryptorów */
     fds[FD_POLL_SIGNAL].fd = signal_fd;
     fds[FD_POLL_SIGNAL].events = POLLIN;
     fds[FD_POLL_FANOTIFY].fd = fanotify_fd;
     fds[FD_POLL_FANOTIFY].events = POLLIN;
 
-  /* Now loop */
-  for (;;)
+    /* Główna pętla */
+    while (true)
     {
-      /* Block until there is something to be read */
+      /* Blokuj aż będzie coś do odczytania z jednego z deskryptorów */
       if (poll (fds, FD_POLL_MAX, -1) < 0)
         {
           fprintf (stderr,
@@ -82,11 +87,12 @@ main(int          argc,
           exit (EXIT_FAILURE);
         }
 
-      /* Signal received? */
+      /* Otrzymano sygnał? */
       if (fds[FD_POLL_SIGNAL].revents & POLLIN)
         {
           struct signalfd_siginfo fdsi;
 
+            /* Odczytaj sygnał */
           if (read (fds[FD_POLL_SIGNAL].fd,
                     &fdsi,
                     sizeof (fdsi)) != sizeof (fdsi))
@@ -96,17 +102,17 @@ main(int          argc,
               exit (EXIT_FAILURE);
             }
 
-          /* Break loop if we got the expected signal */
+          /* Przerwij pętlę jeśli otrzymaliśmy jeden z zainicjalizowanych wcześniej sygnałów */
           if (fdsi.ssi_signo == SIGINT ||
               fdsi.ssi_signo == SIGTERM)
             {
-              do_exit_procedures = false;
+              do_exit_procedures = false; /* wyjdź bez kopiowania i dalszych działań */
               break;
             }
 
             if (fdsi.ssi_signo == SIGUSR1)
             {
-                do_exit_procedures = true;
+                do_exit_procedures = true; /* wyjdź z kopiowaniem i dalszymi działaniami */
                 break;
             }
 
@@ -114,14 +120,13 @@ main(int          argc,
                    "Received unexpected signal\n");
         }
 
-      /* fanotify event received? */
+        /* Otrzymaliśmy event fanotify? */
         if (fds[FD_POLL_FANOTIFY].revents & POLLIN)
         {
             char buffer[FANOTIFY_BUFFER_SIZE];
             ssize_t length;
 
-            /* Read from the FD. It will read all events available up to
-            * the given buffer size. */
+            /* Odczytaj dane z deskryptora. Odczyta wszystkie dostępne eventy do wielkości bufora */
             if ((length = read (fds[FD_POLL_FANOTIFY].fd, buffer, FANOTIFY_BUFFER_SIZE)) > 0)
             {
                 struct fanotify_event_metadata *metadata;
@@ -129,43 +134,56 @@ main(int          argc,
                 metadata = (struct fanotify_event_metadata *)buffer;
                 while (FAN_EVENT_OK (metadata, length))
                 {
-                    add_file_to_list(metadata);
-                    close(metadata->fd);
-                    metadata = FAN_EVENT_NEXT (metadata, length);
+                    add_file_to_list(metadata); /* Dodaj plik do listy używanych plików */
+                    close(metadata->fd);        /* Zamknij deskryptor eventu */
+                    metadata = FAN_EVENT_NEXT (metadata, length);   /* Przejdź do następnego eventu */
                 }
             }
         }
     }
 
+    /* Mamy wykonać procedury końcowe? */
     if (do_exit_procedures)
     {
+        /* Skopiuj pliki umieszczone na liście używanych plików */
         std::cout<<"Copying files"<<std::endl;
         copy_files();
 
-        if (global_config.lookup("general.encrypt_files"))
-        {
-            std::cout<<"Encrypting files"<<std::endl;
-            crypt_files(false, pendrive_dir);
-        }
+        bool do_encrypt = global_config.lookup("general.encrypt_files");
+        bool do_ftp = global_config.lookup("general.send_to_ftp");
+        bool do_userscript = global_config.lookup("general.send_to_phone");
 
-        if (global_config.lookup("general.send_to_ftp"))
+        if (do_encrypt || do_ftp)
         {
-            // std::cout<<"Sending files to ftp server"<<std::endl;
-            // send_to_ftp();
-        }
+            std::cout<<"Compressing files"<<std::endl;
+            system("sh compress.sh /tmp/backup.tar backup");
 
-        if (global_config.lookup("general.send_to_phone"))
+            /* Jeżeli w konfiguracji jest włączone szyfrowanie plików, zaszyfruj */
+            if (do_encrypt)
+            {
+                std::cout<<"Encrypting files"<<std::endl;
+                std::string command("sh encrypt.sh password /tmp/backup.tar");
+                std::cout<<command<<std::endl;
+                system(command.c_str());
+            }
+
+            /* Jeżeli w konfiguracji jest włączone wysyłanie na serwer ftp, wyślij */
+            if (do_ftp)
+            {
+                std::cout<<"Sending files to ftp server"<<std::endl;
+                std::string command("sh ftp.sh 192.168.1.110 21 pi usiatko85 /tmp/backup.tar.aes backup.tar.aes");
+                system(command.c_str());
+            }
+        }
+        if (do_userscript)
         {
-            // std::cout<<"Sending files to phone"<<std::endl;
-            // send_to_phone();
+            std::cout<<"Running user-defined script"<<std::endl;
         }
     }
 
-  /* Clean exit */
-  shutdown_fanotify (fanotify_fd);
-  shutdown_signals (signal_fd);
+    /* Zwolnienie zasobów */
+    shutdown_fanotify(fanotify_fd);
+    shutdown_signals(signal_fd);
 
-  printf ("Exiting fanotify example...\n");
-
-  return EXIT_SUCCESS;
+    return EXIT_SUCCESS;
 }

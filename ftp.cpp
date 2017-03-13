@@ -152,18 +152,18 @@ bool FTPConnection::SendData(const char* tpl, ...)
 	vsnprintf(buf, sizeof(buf) - 1, tpl, list);
 	va_end(list);
 	buf[sizeof(buf) - 1] = 0;
-	
+
 	if (send(iSocket, buf, strlen(buf), 0) < 0)
-		return false;	
-	
+		return false;
+
 	szBuffer = ReadSocket(iSocket, iTimeout);
-	
+
 	if(szBuffer != NULL)
 	{
 		std::string ServerMessage = std::string(szBuffer);
-		if(string.find("500") != 0)
-			return false;
-		else
+		//if(ServerMessage.find("500") != 0)
+		//	return false;
+		//else
 			return true;
 	}
 	else
@@ -174,22 +174,33 @@ bool FTPConnection::SendData(const char* tpl, ...)
 bool FTPConnection::Login()
 {
 	bLastCommand = false;
-	
+
 	if (iSocket == -1)
 		return false;
-	
+
 	if(SendData("CWD %s\r\n", "TEST"))
 	{
-		if(std::string(szBuffer).find("530") == 0)
+        std::cout<<std::string(szBuffer)<<std::endl;
+        std::cout<<std::string(szBuffer).find("530")<<std::endl;
+		if(std::string(szBuffer).find("530") == std::string::npos)
+		{
 			if(SendData("USER %s\r\n", szLogin))
-				if(std::string(szBuffer).find("331") == 0)
+			{
+				if(std::string(szBuffer).find("331") == std::string::npos)
+				{
 					if(SendData("PASS %s\r\n", szPassword))
-						if(std::string(szBuffer).find("230") == 0)
+					{
+						if(std::string(szBuffer).find("230") == std::string::npos)
 							return true;
-						else if(std::string(szBuffer).find("530") == 0)
+						else if(std::string(szBuffer).find("530") == std::string::npos)
 							return false;
-				else
-					return true;
+                    }
+                    else
+                        return true;
+                }
+
+            }
+        }
 		else
 			return true;
 	}
@@ -208,12 +219,12 @@ int FTPConnection::UploadFile(const char* file)
 	}
 	if (!SendData("PASV\r\n"))
 		return CONNECTION_TIMEOUT;
-		
+
 	if(std::string(szBuffer).find("530") == 0)
 		return LOGIN_REQUIRED;
 	if (std::string(szBuffer).find("227") != 0)
 		return PASV_MODE_ERROR;
-	
+
 	const char *p1 = strstr(szBuffer, "(") + 1;
 	const char *p2 = strstr(p1, ")");
 	size_t len = p2 - p1;
@@ -255,7 +266,7 @@ int FTPConnection::UploadFile(const char* file)
 	int readbytes = 0;
 	int total_send = 0;
 	int proc_complete = 0;
-	
+
 	struct stat st;
 	stat(file, &st);
 	int total_bytes = st.st_size;
@@ -297,10 +308,10 @@ int FTPConnection::UploadFile(const char* file)
 int FTPConnection::CreateDirectory(const char* directory)
 {
 	bLastCommand = false;
-	
+
 	if (iSocket == -1)
 		return CONNECTION_TIMEOUT;
-	
+
 		if(SendData("MKD %s\r\n", directory))
 	{
 		if(std::string(szBuffer).find("530") == 0)
@@ -322,10 +333,10 @@ int FTPConnection::CreateDirectory(const char* directory)
 int FTPConnection::GoToDirectory(const char* directory, bool create_if_doenst_exist)
 {
 	bLastCommand = false;
-	
+
 	if (iSocket == -1)
 		return CONNECTION_TIMEOUT;
-	
+
 	if(SendData("CWD %s\r\n", directory))
 	{
 		if(std::string(szBuffer).find("530") == 0)
@@ -410,21 +421,21 @@ bool FTPConnection::Connect()
 
 	if(bLastCommand)
 		bLastCommand = Login();
-	
+
 	return bLastCommand;
 }
 
 bool FTPConnection::RetryConnection()
 {
 	iCurrentRetry++;
-	
+
 	if(iCurrentRetry > iMaxRetry)
 	{
 		iCurrentRetry = 0;
 		return false;
 	}
 	printf ("Connection failed! Reconnecting...\n");
-	
+
 	if(Connect())
 	{
 		iCurrentRetry = 0;
@@ -439,11 +450,11 @@ int FTPConnection::SendDirectory(const char* directory, const char* ftp_director
 {
 	DIR *dir = opendir(directory);
 	if (dir)
-	{	
+	{
 		std::string cur_dir_name(basename((char*)directory));
-		
+
 		std::string cur_ftp_dir_name(ftp_directory);
-		
+
 		if(cur_ftp_dir_name != "")
 		{
 			if(cur_ftp_dir_name != "/")
@@ -455,11 +466,11 @@ int FTPConnection::SendDirectory(const char* directory, const char* ftp_director
 		while (entry != NULL)
 		{
 			std::string dir_name(entry->d_name);
-			
+
 			std::string full_dir_name(directory);
-			
+
 			std::string file = full_dir_name + "/" + dir_name;
-			
+
 			if (entry->d_type == DT_DIR && dir_name != ".." && dir_name != ".")
 			{
 				if(SendDirectory(file.c_str(), final_path.c_str()) == -1)
@@ -475,7 +486,7 @@ int FTPConnection::SendDirectory(const char* directory, const char* ftp_director
 					if(err_dir == CONNECTION_TIMEOUT)
 						b_connectiontimeout = true;
 					if(!b_connectiontimeout)
-					{				
+					{
 						int err_upload = UploadFile(file.c_str());
 						if(err_upload == CONNECTION_TIMEOUT)
 							b_connectiontimeout = true;

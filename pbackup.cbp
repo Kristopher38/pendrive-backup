@@ -31,7 +31,11 @@
 		<Unit filename="fanotify.h" />
 		<Unit filename="filescopy.cpp" />
 		<Unit filename="filescopy.h" />
+		<Unit filename="ftp.cpp" />
+		<Unit filename="ftp.h" />
 		<Unit filename="main.cpp" />
+		<Unit filename="permissions.cpp" />
+		<Unit filename="permissions.h" />
 		<Unit filename="settings.cpp" />
 		<Unit filename="settings.h" />
 		<Unit filename="signals.cpp" />
