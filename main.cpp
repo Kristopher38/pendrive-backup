@@ -149,35 +149,45 @@ main(int          argc,
         std::cout<<"Copying files"<<std::endl;
         copy_files();
 
+
+        std::cout<<"Compressing files"<<std::endl;
+        std::string backup_folder = global_config.lookup("general.copy_directory");
+        std::string command("sh compress.sh " + backup_folder);
+        int ret = system(command.c_str());
+        std::cout<<"Compression script exited with exit code "<<ret<<std::endl;
+        if (ret == 2)
+        {
+            std::cerr<<"Fatal error occured, couldn't compress files, exiting"<<std::endl;
+            return (EXIT_FAILURE);
+        }
+
         bool do_encrypt = global_config.lookup("general.encrypt_files");
         bool do_ftp = global_config.lookup("general.send_to_ftp");
         bool do_userscript = global_config.lookup("general.send_to_phone");
 
-        if (do_encrypt || do_ftp)
+        /* Jeżeli w konfiguracji jest włączone szyfrowanie plików, zaszyfruj */
+        if (do_encrypt)
         {
-            std::cout<<"Compressing files"<<std::endl;
-            system("sh compress.sh /tmp/backup.tar backup");
-
-            /* Jeżeli w konfiguracji jest włączone szyfrowanie plików, zaszyfruj */
-            if (do_encrypt)
-            {
-                std::cout<<"Encrypting files"<<std::endl;
-                std::string command("sh encrypt.sh password /tmp/backup.tar");
-                std::cout<<command<<std::endl;
-                system(command.c_str());
-            }
-
-            /* Jeżeli w konfiguracji jest włączone wysyłanie na serwer ftp, wyślij */
-            if (do_ftp)
-            {
-                std::cout<<"Sending files to ftp server"<<std::endl;
-                std::string command("sh ftp.sh 192.168.1.110 21 pi usiatko85 /tmp/backup.tar.aes backup.tar.aes");
-                system(command.c_str());
-            }
+            std::cout<<"Encrypting files"<<std::endl;
+            std::string command("sh encrypt.sh " + backup_folder);
+            if (system(command.c_str()) != 0)
+                std::cerr<<"Error occured while encrypting files"<<std::endl;
         }
+
+        /* Jeżeli w konfiguracji jest włączone wysyłanie na serwer ftp, wyślij */
+        if (do_ftp)
+        {
+            std::cout<<"Sending files to ftp server"<<std::endl;
+            std::string command("sh ftp.sh 192.168.1.110 21 pi usiatko85 " + backup_folder);
+            if (system(command.c_str()) != 0)
+                std::cerr<<"Error occured while sending files to ftp server"<<std::endl;
+        }
+
+        /* Jeżeli w konfiguracji jest włączone uruchomienie skryptu użytkownika, uruchom */
         if (do_userscript)
         {
             std::cout<<"Running user-defined script"<<std::endl;
+            system("sh userscript.sh");
         }
     }
 
