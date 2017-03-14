@@ -95,4 +95,9 @@ void init_settings() /* Inicjalizacja konfiguracji programu */
     check_and_make_setting(global_config, "monitored_events.close_write", Setting::TypeBoolean, true);
     check_and_make_setting(global_config, "monitored_events.close_nowrite", Setting::TypeBoolean, true);
     check_and_make_setting(global_config, "monitored_events.close", Setting::TypeBoolean, true);
+
+    check_and_make_setting(global_config, "ftp.address", Setting::TypeString, "");
+    check_and_make_setting(global_config, "ftp.port", Setting::TypeString, "21");
+    check_and_make_setting(global_config, "ftp.username", Setting::TypeString, "anonymous");
+    check_and_make_setting(global_config, "ftp.password", Setting::TypeString, "");
 }

@@ -131,6 +131,7 @@ main(int          argc,
             {
                 struct fanotify_event_metadata *metadata;
 
+                /* Cast danych na strukturę zdarzenia dyskowego fanotify */
                 metadata = (struct fanotify_event_metadata *)buffer;
                 while (FAN_EVENT_OK (metadata, length))
                 {
@@ -149,45 +150,44 @@ main(int          argc,
         std::cout<<"Copying files"<<std::endl;
         copy_files();
 
-
+        /* Skompresuj plik skryptem */
         std::cout<<"Compressing files"<<std::endl;
+        /* Pobierz dane z konfiguracji i uruchom skrypt z odpowiednim argumentem (ścieżka folderu z backupem) */
         std::string backup_folder = global_config.lookup("general.copy_directory");
         std::string command("sh compress.sh " + backup_folder);
-        int ret = system(command.c_str());
-        std::cout<<"Compression script exited with exit code "<<ret<<std::endl;
-        if (ret == 2)
-        {
-            std::cerr<<"Fatal error occured, couldn't compress files, exiting"<<std::endl;
-            return (EXIT_FAILURE);
-        }
+        if (system(command.c_str()) != 0)
+            return (EXIT_FAILURE);  /* Wyjdź jeśli nie udało się skompresować */
 
-        bool do_encrypt = global_config.lookup("general.encrypt_files");
-        bool do_ftp = global_config.lookup("general.send_to_ftp");
-        bool do_userscript = global_config.lookup("general.send_to_phone");
-
-        /* Jeżeli w konfiguracji jest włączone szyfrowanie plików, zaszyfruj */
-        if (do_encrypt)
+        /* Jeżeli w konfiguracji jest włączone szyfrowanie plików, zaszyfruj skryptem */
+        if (global_config.lookup("general.encrypt_files"))
         {
             std::cout<<"Encrypting files"<<std::endl;
+            /* Uruchom skrypt z odpowiednim argumentem (ścieżka folderu z backupem) */
             std::string command("sh encrypt.sh " + backup_folder);
             if (system(command.c_str()) != 0)
                 std::cerr<<"Error occured while encrypting files"<<std::endl;
         }
 
-        /* Jeżeli w konfiguracji jest włączone wysyłanie na serwer ftp, wyślij */
-        if (do_ftp)
+        /* Jeżeli w konfiguracji jest włączone wysyłanie na serwer ftp, wyślij skryptem */
+        if (global_config.lookup("general.send_to_ftp"))
         {
             std::cout<<"Sending files to ftp server"<<std::endl;
-            std::string command("sh ftp.sh 192.168.1.110 21 pi usiatko85 " + backup_folder);
+            /* Pobierz dane z konfiguracji i uruchom skrypt z odpowiednimi argumentami (dane potrzebne do połączenia i zalogowania na serwer ftp oraz ścieżka folderu z backupem) */
+            std::string address = global_config.lookup("ftp.address");
+            std::string port = global_config.lookup("ftp.port");
+            std::string username = global_config.lookup("ftp.username");
+            std::string password = global_config.lookup("ftp.password");
+            std::string command("sh ftp.sh " + address + " " + port + " " + username + " " + password + " " + backup_folder);
             if (system(command.c_str()) != 0)
                 std::cerr<<"Error occured while sending files to ftp server"<<std::endl;
         }
 
-        /* Jeżeli w konfiguracji jest włączone uruchomienie skryptu użytkownika, uruchom */
-        if (do_userscript)
+        /* Jeżeli w konfiguracji jest włączone uruchomienie skryptu użytkownika, uruchom skrypt */
+        if (global_config.lookup("general.send_to_phone"))
         {
             std::cout<<"Running user-defined script"<<std::endl;
-            system("sh userscript.sh");
+            if (system("sh userscript.sh") != 0)
+                std::cerr<<"Error occured while running user-defined script"<<std::endl;
         }
     }
 

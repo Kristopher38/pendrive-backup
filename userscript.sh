@@ -1,2 +1,2 @@
 #!/bin/sh
-echo "Userscript here"
+echo "Running sample userscript"

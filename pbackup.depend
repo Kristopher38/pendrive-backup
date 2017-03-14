@@ -1,5 +1,5 @@
 # depslib dependency file v1.0
-1489356753 source:/home/kris/Pulpit/pbackup/main.cpp
+1489514675 source:/home/kris/Pulpit/pbackup/main.cpp
 	<unistd.h>
 	<poll.h>
 	<string.h>
@@ -100,7 +100,7 @@
 1489348022 source:/home/kris/Pulpit/pbackup/permissions.cpp
 	"permissions.h"
 
-1488912691 source:/home/kris/Pulpit/pbackup/ftp.cpp
+1489409237 source:/home/kris/Pulpit/pbackup/ftp.cpp
 	"ftp.h"
 
 1488748367 /home/kris/Pulpit/pbackup/ftp.h
