@@ -1,2 +1,3 @@
 #!/bin/sh
-echo "Running sample userscript"
+# Skrypt w którym użytkownik może zdefiniować własne operacje po zakończeniu standardowych funkcji programu
+echo "Sample userscript"
