@@ -29,7 +29,7 @@ else
 fi
 
 # przeprowadź transfer pliku logując się z podanymi parametrami, zapisując logi do pliku /tmp/ftplog
-FTPLOG=/tmp/ftplog
+FTPLOG=/var/log/pbackup-ftp.log
 ftp -nv $1 $2 <<END_FTP > $FTPLOG 2>&1
 quote USER $3
 quote PASS $4

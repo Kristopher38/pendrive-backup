@@ -1,25 +1,37 @@
 #!/bin/sh
-MOUNTPOINT=/media/kris/pendrive
-UUID=a534f24b-c9c4-411a-981f-e9699dfd065b
+# definicja punktu montowania i UUID pamięci masowej na której znajduje się program
+MOUNTPOINT="/media/kris/pendrive"
+UUID="a534f24b-c9c4-411a-981f-e9699dfd065b"
 
-UUIDPATH=/dev/disk/by-uuid/$UUID
-ISMOUNTED=false
-while [ $ISMOUNTED = false ]
+# ścieżka do symlinku pozwalającego na pobranie ścieżki do pliku blokowego urządzenia
+UUIDPATH="/dev/disk/by-uuid/$UUID"
+ISMOUNTED="false"
+
+# pętla dopóki nie zostanie zamontowany
+while [ "$ISMOUNTED" = "false" ]
 do
-	DEVPATH=$(readlink -f $UUIDPATH)
-	if [ "$DEVPATH" != "$UUIDPATH" ]
+	DEVPATH=$(readlink -f "$UUIDPATH")		# pobierz ścieżkę pliku blokowego pamięci masowej
+	if [ "$DEVPATH" != "$UUIDPATH" ]		# jeśli jest różna od UUID to znaczy że pamięć masowa została podpięta do komputera
 	then
-		echo $DEVPATH
-		echo $UUIDPATH
-		mount "$DEVPATH" "$MOUNTPOINT"
-		ISMOUNTED=true
-		if [ -r "$MOUNTPOINT/pbackup" -a -x "$MOUNTPOINT/pbackup" ]
+		mount "$DEVPATH" "$MOUNTPOINT" >> /dev/null 2>&1	# zamontuj pamięć masową 
+		if [ $? -eq 0 ] 	# sprawdź czy montowanie się powiodło
 		then
-			$MOUNTPOINT/pbackup
-			exit
+			echo "[$(date +"%T")] Successfully mounted backup drive"
+			ISMOUNTED="true"
+			if [ -r "$MOUNTPOINT/pbackup" -a -x "$MOUNTPOINT/pbackup" ] 	# sprawdź czy plik programu istnieje i mamy do niego prawa odczytu i wykonania
+			then
+				echo "[$(date +"%T")] Starting backup program"
+				"$MOUNTPOINT/pbackup"		# uruchom program
+				exit						# exit wykona się po zakończeniu pracy programu
+			else	# nie znaleziono programu lub uprawnienia nie pozwalają na uruchomienie
+				echo "[$(date +"%T")] Program executable not found on backup drive or permissions don't allow for execute"
+				exit 1
+			fi
+		else	# montowanie nie powiodło się
+			echo "[$(date +"%T")] Failed mounting backup drive"
+			exit 1
 		fi
 	else
-		echo "Kanker"
-		sleep 1
+		sleep 1	# jeśli ścieżka pliku blokowego jest taka sama jak UUID, to znaczy że pamięć masowa nie została jeszcze podpięta do komputera, w tym wypadku czekamy
 	fi
 done

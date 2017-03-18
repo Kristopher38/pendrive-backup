@@ -3,34 +3,42 @@
 # Provides:	     pbackup
 # Required-Start:    networking $remote_fs $syslog $local_fs $network $named $time
 # Required-Stop:     networking $remote_fs $syslog #local_fs $network $named $time
-# Default-Start:	2 3 4 5
-# Default-Stop:		0 1 6
+# Default-Start:     2 3 4 5
+# Default-Stop:	     0 1 6
 # Short-Description: Start and stop pbackup daemon at boot and shutdown
 # Description:       Start automounter script at boot, send signal to do exit procedures to the daemon at shutdown, and wait for it's exit
 ### END INIT INFO
 
-LOGFILE="/var/log/pbackup$(date +"%d-%m-%y--%H-%M-%S").log"
-exec >> $LOGFILE 2>&1
+# ^^^ Nagłówek LSB skryptów init.d, wraz z wymaganymi zależnościami
 
+# Przekierowanie całego wyjścia programu do pliku
+LOGFILE="/var/log/pbackup.log"
+exec >> $LOGFILE
+exec 2>&1
+
+# standardowe w skryptach init.d sprawdzanie co skrypt ma zrobić z usługą (zatrzymać/uruchomić)
 case "$1" in
-	start)
+	start) # start usługi
 		echo "[$(date +"%T")] Starting automounter script"
-		sudo setsid bash /etc/init.d/usb >$LOGFILE 2>&1 < $LOGFILE &
+		sudo setsid bash /etc/pbackup/usb >>$LOGFILE 2>&1 < $LOGFILE & 		# uruchomienie z całkowitym odłączeniem od procesu wykonującego skrypt, z przekierowaniem całego wyjścia do tego samego pliku z logami
 	;;
-	stop)
+	stop) # stop usługi
 		echo "[$(date +"%T")] Stopping service..."
-		proc_list=$(pgrep --exact pbackup)
-
+		proc_list=$(pgrep --exact pbackup)	# pobranie listy id procesów o nazwie takiej jak nazwa programu
+		
+		# iterowanie przez listę
 		printf '%s\n' "$proc_list" | while IFS= read -r pid
 		do
-			echo "[$(date +"%T")] killing process $pid"
-			sudo kill -10 $pid >/dev/null 2>&1
+			echo "[$(date +"%T")] killing process $pid with name $(ps -p $pid -o comm= )"
+			sudo kill -10 $pid >/dev/null 2>&1		# wysyłanie sygnału kończenia pracy do każdego procesu o id z listy
 		done
 
-		proc_list=$(pgrep --exact pbackup)
-
+		proc_list=$(pgrep --exact pbackup)  # ponowne pobranie listy id procesów o nazwie programu
+		
+		# ponowne przeiterowanie przez listę
 		printf '%s\n' "$proc_list" | while IFS= read -r pid
 		do
+			# pętla czekająca na zakończenie każdego procesu z listy z osobna
 			while kill -0 $pid >/dev/null 2>&1
 			do
 				echo "[$(date +"%T")] waiting for process $pid"
@@ -38,8 +46,9 @@ case "$1" in
 			done
 		done
 	;;
-	*)
+	*)	# błędne argumenty, informacja o sposobie użycia
 		echo "[$(date +"%T")] Usage: pbackup {start|stop}"
 		exit 1
+	;;
 esac
 exit 0
