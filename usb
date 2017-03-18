@@ -1,0 +1,25 @@
+#!/bin/sh
+MOUNTPOINT=/media/kris/pendrive
+UUID=a534f24b-c9c4-411a-981f-e9699dfd065b
+
+UUIDPATH=/dev/disk/by-uuid/$UUID
+ISMOUNTED=false
+while [ $ISMOUNTED = false ]
+do
+	DEVPATH=$(readlink -f $UUIDPATH)
+	if [ "$DEVPATH" != "$UUIDPATH" ]
+	then
+		echo $DEVPATH
+		echo $UUIDPATH
+		mount "$DEVPATH" "$MOUNTPOINT"
+		ISMOUNTED=true
+		if [ -r "$MOUNTPOINT/pbackup" -a -x "$MOUNTPOINT/pbackup" ]
+		then
+			$MOUNTPOINT/pbackup
+			exit
+		fi
+	else
+		echo "Kanker"
+		sleep 1
+	fi
+done

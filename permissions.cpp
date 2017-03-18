@@ -3,7 +3,7 @@
 std::string get_user_perm_name() /* Zwraca nazwę użytkownika na którego program ma się logować (z którego uprawnieniami ma działać) */
 {
     /* Odczyt z pliku userperm */
-    std::ifstream userfile("userperm", std::ifstream::in);
+    std::ifstream userfile(app_launch_dir + "userperm", std::ifstream::in);
     std::string user;
     if (userfile.good())
         userfile>>user;

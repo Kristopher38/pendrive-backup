@@ -3,9 +3,10 @@
 using namespace libconfig;
 
 Config global_config;
+std::string app_launch_dir;
 
 /* Sprawdza w konfiguracji 'cfg' czy dana opcja o nazwie 'name' i typie 'val_type' istnieje (a jeśli jest listą, to czy typ jej elementów jest taki sam jak 'list_type'), jeśli nie to usuwa wadliwą opcję i tworzy nową o właściwym typie z wartością domyślną 'value'. Zwraca true w przypadku konieczności "naprawienia" opcji, false gdy opcja była zdefiniowana poprawnie */
-template <typename T=int> bool check_and_make_setting(Config& cfg, std::string name, Setting::Type val_type, T value = 0, Setting::Type list_type = Setting::TypeString)
+template <typename T=int> bool check_and_make_setting(Config& cfg, std::string name, Setting::Type val_type, T value, Setting::Type list_type)
 {
     /* Sprawdzenie czy opcja istnieje, czy jest właściwego typu, i czy elementy listy (jeśli jest listą) są właściwego typu - jeśli coś jest nie tak, kontynuuj */
     if (!(cfg.exists(name) && cfg.lookup(name).getType() == val_type) ||
@@ -49,12 +50,22 @@ template <typename T=int> bool check_and_make_setting(Config& cfg, std::string n
     return false;
 }
 
-void init_settings() /* Inicjalizacja konfiguracji programu */
+int init_settings(int argc, const char** argv) /* Inicjalizacja konfiguracji programu */
 {
+    /* ustaw ścieżkę z której jest uruchomiony program */
+    ssize_t len;
+    char buffer[PATH_MAX];
+	/* odczytaj zawartość symlinku (ścieżkę na którą wskazuje symlink) */
+	if ((len = readlink("/proc/self/exe", buffer, PATH_MAX - 1)) < 0)
+		return NULL;
+    buffer[len] = '\0';
+    app_launch_dir = std::string(buffer);
+    app_launch_dir = app_launch_dir.substr(0, app_launch_dir.rfind('/') + 1);
+
     /* Odczyt z pliku konfiguracyjnego config.cfg, w przypadku błędów odczytu program użyje wartości domyślnych */
     try
     {
-        global_config.readFile("config.cfg");
+        global_config.readFile(std::string(app_launch_dir + "/config.cfg").c_str());
     }
     catch(const FileIOException &fioex)
     {

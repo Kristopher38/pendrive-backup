@@ -4,55 +4,26 @@ using namespace libconfig;
 
 std::string pendrive_dir;               /* Ścieżka w drzewie katalogowym w której zamontowany jest pendrive */
 const std::string app_name("pbackup");  /* Nazwa procesu */
-std::string app_launch_dir;             /* Ścieżka z której uruchamiany jest program (argv[0]) */
 std::set<std::string> files_to_copy;    /* Lista używanych plików */
 
-int initialize_filecopier(int argc, const char** argv) /* Inicjalizacja zmiennych niezbędnych do poprawnego kopiowania plików */
+int initialize_filecopier() /* Inicjalizacja zmiennych niezbędnych do poprawnego kopiowania plików */
 {
-    /* ustaw ścieżkę z której jest uruchomiony program */
-    if (argc > 0)
-        app_launch_dir = argv[0];
-    else app_launch_dir = app_name;
-
-    char cwd[1024];
-
-    /* Sprawdź czy ścieżka do której mają być kopiowane pliki istnieje, i czy jest katalogiem */
     std::string copy_dir = global_config.lookup("general.copy_directory");
-    if (!is_directory(copy_dir))
-    {
-        std::cerr<<"Copy directory isn't a directory or doesn't exist"<<std::endl;
-        return -1;
-    }
-
-    /* Sprawdź czy ścieżka ma / na końcu - wymagane do poprawnego działania programu */
-    if (copy_dir.back() != '/')
-        copy_dir.append("/");
-
-    /* Sprawdź czy ścieżka jest absolutna */
-    if (copy_dir.length() > 0 && copy_dir[0] == '/')
-        pendrive_dir = copy_dir;
-
-    /* Jeśli jest relatywna, pobierz current working directory i dopisz do niego ścieżkę kopiowania */
-    else if (getcwd(cwd, sizeof(cwd)) != NULL)
-        pendrive_dir = std::string(cwd) + std::string("/") + copy_dir;
-    else
-    {
-        std::cerr<<"Failed to get current working directory"<<std::endl;
-        return -1;
-    }
+    pendrive_dir = app_launch_dir + copy_dir + "/";
+    return 0;
 }
 
-std::string get_program_name_from_pid(int pid)  /* Zwraca nazwę programu na podstawie id procesu */
-{
+/*std::string get_program_name_from_pid(int pid)  /* Zwraca nazwę programu na podstawie id procesu */
+/*{
     std::string program_name;                                                                   /* nazwa programu */
-    std::string path = std::string("/proc/") + std::to_string(pid) + std::string("/cmdline");   /* ścieżka do pliku z nazwą programu */
+/*    std::string path = std::string("/proc/") + std::to_string(pid) + std::string("/cmdline");   /* ścieżka do pliku z nazwą programu */
 
     /* otwarcie pliku */
-    std::ifstream procfile(path, std::ifstream::in);
+/*    std::ifstream procfile(path, std::ifstream::in);
     if (procfile.good())
     {
         /* pobranie nazwy programu z pliku i odpowiednie jej przetworzenie */
-        procfile>>program_name;
+/*        procfile>>program_name;
         if (program_name.length() > 0)
         {
             std::size_t pos = program_name.find('\0');
@@ -64,6 +35,37 @@ std::string get_program_name_from_pid(int pid)  /* Zwraca nazwę programu na pod
         }
     }
 	return program_name;
+}*/
+
+std::string get_program_name_from_pid (int pid)
+{
+    char buffer[PATH_MAX];
+	int fd;
+	ssize_t len;
+	char *aux;
+
+	/* Try to get program name by PID */
+	sprintf(buffer, "/proc/%d/cmdline", pid);
+	if ((fd = open(buffer, O_RDONLY)) < 0)
+		return std::string();
+
+	/* Read file contents into buffer */
+	if ((len = read(fd, buffer, PATH_MAX - 1)) <= 0)
+	{
+		close(fd);
+		return std::string();
+	}
+	close(fd);
+
+	buffer[len] = '\0';
+	aux = strstr(buffer, "^@");
+	if (aux)
+		*aux = '\0';
+    try {
+        return std::string(buffer);
+    } catch (const std::exception& e){
+        return std::string();
+    }
 }
 
 std::string get_file_path_from_fd(int fd) /* Zwraca ścieżkę pliku na podstawie jego deskryptora */
@@ -298,8 +300,10 @@ void add_file_to_list(const fanotify_event_metadata* metadata)  /* Przepuszcza p
     bool filter_program = false;
 
     /* Odfiltruj event jeśli ścieżka jest katalogiem, pochodzi z pamięci masowej lub jest wygenerowana przez sam program */
+
     std::string program_name = get_program_name_from_pid(metadata->pid);
-    if (is_directory(source_path) || source_path.find(pendrive_dir) != std::string::npos || program_name == app_name || program_name == app_launch_dir)
+    program_name = program_name.substr(program_name.rfind('/') + 1, std::string::npos);
+    if (is_directory(source_path) || source_path.find(pendrive_dir) != std::string::npos || program_name == app_name || program_name == app_launch_dir + app_name)
         return;
 
     /* Odfiltruj event na podstawie filtra nazw plików z konfiguracji */

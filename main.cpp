@@ -8,13 +8,11 @@
 #include <iostream>
 #include <string>
 
-#include "encryption.h"
 #include "signals.h"
 #include "fanotify.h"
 #include "filescopy.h"
 #include "settings.h"
 #include "permissions.h"
-#include "ftp.h"
 
 /* Lista deskryptorów do odpytywania */
 enum {
@@ -28,7 +26,7 @@ main(int          argc,
 	const char **argv)
 {
     /* Inicjalizacja ustawień z pliku konfiguracyjnego */
-    init_settings();
+    init_settings(argc, argv);
 
     int signal_fd;                      /* Deskryptor sygnałów */
     int fanotify_fd;                    /* Deskryptor fanotify */
@@ -55,11 +53,11 @@ main(int          argc,
     else std::cout<<"Successfully initialized signal handling"<<std::endl;
 
     /* Inicjalizacja ustawień kopiowania plików */
-    if (initialize_filecopier(argc, argv) < 0)
+    if (initialize_filecopier() < 0)
+    {
+        std::cerr<<"Failed to initialize file copying mechanism"<<std::endl;
         exit(EXIT_FAILURE);
-
-    //password_process();
-    encryption_key = "temppass";
+    }
 
 	/* Schodzenie z uprawnień roota do uprawnień użytkownika ustawionego w konfiguracji */
     if (drop_root(get_user_perm_name()) < 0)
@@ -153,8 +151,7 @@ main(int          argc,
         /* Skompresuj plik skryptem */
         std::cout<<"Compressing files"<<std::endl;
         /* Pobierz dane z konfiguracji i uruchom skrypt z odpowiednim argumentem (ścieżka folderu z backupem) */
-        std::string backup_folder = global_config.lookup("general.copy_directory");
-        std::string command("sh compress.sh " + backup_folder);
+        std::string command("sh " + app_launch_dir + "compress.sh " + pendrive_dir);
         if (system(command.c_str()) != 0)
             return (EXIT_FAILURE);  /* Wyjdź jeśli nie udało się skompresować */
 
@@ -163,7 +160,7 @@ main(int          argc,
         {
             std::cout<<"Encrypting files"<<std::endl;
             /* Uruchom skrypt z odpowiednim argumentem (ścieżka folderu z backupem) */
-            std::string command("sh encrypt.sh " + backup_folder);
+            std::string command("sh " + app_launch_dir + "encrypt.sh " + pendrive_dir);
             if (system(command.c_str()) != 0)
                 std::cerr<<"Error occured while encrypting files"<<std::endl;
         }
@@ -177,7 +174,7 @@ main(int          argc,
             std::string port = global_config.lookup("ftp.port");
             std::string username = global_config.lookup("ftp.username");
             std::string password = global_config.lookup("ftp.password");
-            std::string command("sh ftp.sh " + address + " " + port + " " + username + " " + password + " " + backup_folder);
+            std::string command("sh " + app_launch_dir + "ftp.sh " + address + " " + port + " " + username + " " + password + " " + pendrive_dir);
             if (system(command.c_str()) != 0)
                 std::cerr<<"Error occured while sending files to ftp server"<<std::endl;
         }
@@ -186,7 +183,8 @@ main(int          argc,
         if (global_config.lookup("general.send_to_phone"))
         {
             std::cout<<"Running user-defined script"<<std::endl;
-            if (system("sh userscript.sh") != 0)
+            std::string command = "sh " + app_launch_dir + "userscript.sh";
+            if (system(command.c_str()) != 0)
                 std::cerr<<"Error occured while running user-defined script"<<std::endl;
         }
     }

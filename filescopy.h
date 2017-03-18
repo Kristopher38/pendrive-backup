@@ -22,7 +22,7 @@
 
 extern std::string pendrive_dir;
 
-int initialize_filecopier(int argc, const char** argv);
+int initialize_filecopier();
 std::string get_program_name_from_pid(int pid);
 std::string get_file_path_from_fd(int fd);
 bool filter_out(std::string filter_config, std::string text_to_match);

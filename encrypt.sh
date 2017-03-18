@@ -1,6 +1,8 @@
 #!/bin/sh
 # argumenty: $1 - katalog w którym znajduje się archiwum do zaszyfrowania
 
+PENDRIVE_DIR=$(echo $0 | sed -e 's/\/encrypt.sh//g') # podmień nazwę skryptu na pustą aby otrzymać ścieżkę pendrive'a
+
 if [ "$#" -ne 1 ]; then		# sprawdzenie czy ilość argumentów jest poprawna
 	echo "Usage: $0 directory_with_archive_to_encrypt" >&2
 	exit 1
@@ -17,12 +19,12 @@ if ! [ -f "$1/backup.tar" -o -r "$1/backup.tar" ]; then		# sprawdzenie czy plik 
 	echo "$1/backup.tar file doesn't exist or no permission to read"
 	exit 1
 fi
-if ! [ -f "secret.key" -a -r "secret.key" ]; then			# sprawdzenie czy plik z kluczem (zaszyfrowanym hasłem) istnieje i mamy do niego prawa odczytu
+if ! [ -f "$PENDRIVE_DIR/secret.key" -a -r "$PENDRIVE_DIR/secret.key" ]; then			# sprawdzenie czy plik z kluczem (zaszyfrowanym hasłem) istnieje i mamy do niego prawa odczytu
 	echo "secret.key file (encrypted file with password) doesn't exist or no permission to read"
 	exit 1
 fi
 
-aescrypt -e -k secret.key $1/backup.tar		# zaszyfruj archiwum z kluczem secret.key
+aescrypt -e -k $PENDRIVE_DIR/secret.key $1/backup.tar		# zaszyfruj archiwum z kluczem secret.key
 AES_CODE=$?
 rm $1/backup.tar							# usuń niezaszyfrowane archiwum.tar
 exit $AES_CODE								# wyjdź ze status kodem aescrypta

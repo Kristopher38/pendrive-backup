@@ -13,17 +13,14 @@ if ! [ -d "$1" ]; then			# sprawdzenie czy ścieżka do katalogu jest katalogiem
 	exit 1
 fi
 
-tar --exclude='*.tar' --exclude='*.tar.aes' -cvf /tmp/backup.tar $1		# zaszyfruj katalog, wykluczając wszelkie archiwa .tar i .tar.aes znajdujące się w katalogu
-if [ $? = 2 ]					# sprawdź exit code tara
+rm $1/backup.tar $1/backup.tar.aes >> /dev/null 2>&1    # usuń wcześniejsze backupy
+tar --remove-files -cvf $1/../backup.tar -C $1 .		# zaszyfruj katalog
+mkdir $1 >> /dev/null 2>&1                              # utwórz katalog backupu bo został usunięty podczas kompresji
+mv $1/../backup.tar $1                                  # przenieś archiwum do tegoż katalogu
+if [ $? = 2 ]					                        # sprawdź exit code tara
 then
 	echo "Fatal error occurred when compressing backup folder"
 	exit 1
 fi
 
-# usuń zawartość która została skompresowana, przekopiuj plik tymczasowy na pamięć masową i usuń plik tymczasowy
-cd $1
-rm -rf *
-cd ..
-cp /tmp/backup.tar $1
-rm /tmp/backup.tar
 exit 0

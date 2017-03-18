@@ -7,7 +7,7 @@
 #include <iostream>
 #include <fstream>
 
-#include "permissions.h"
+#include "settings.h"
 
 std::string get_user_perm_name();
 int drop_root(std::string drop_to);
