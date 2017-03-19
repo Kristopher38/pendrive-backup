@@ -21,12 +21,10 @@ enum {
 	FD_POLL_MAX
 };
 
-int
-main(int          argc,
-	const char **argv)
+int main()
 {
     /* Inicjalizacja ustawień z pliku konfiguracyjnego */
-    init_settings(argc, argv);
+    init_settings();
 
     int signal_fd;                      /* Deskryptor sygnałów */
     int fanotify_fd;                    /* Deskryptor fanotify */

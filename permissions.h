@@ -2,7 +2,6 @@
 #define H_PERMISSIONS
 
 #include <unistd.h> // setgid setuid
-#include <pwd.h> // access passwd
 
 #include <iostream>
 #include <fstream>

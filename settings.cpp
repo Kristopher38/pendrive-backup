@@ -50,14 +50,14 @@ template <typename T=int> bool check_and_make_setting(Config& cfg, std::string n
     return false;
 }
 
-int init_settings(int argc, const char** argv) /* Inicjalizacja konfiguracji programu */
+int init_settings() /* Inicjalizacja konfiguracji programu */
 {
     /* ustaw ścieżkę z której jest uruchomiony program */
     ssize_t len;
     char buffer[PATH_MAX];
 	/* odczytaj zawartość symlinku (ścieżkę na którą wskazuje symlink) */
 	if ((len = readlink("/proc/self/exe", buffer, PATH_MAX - 1)) < 0)
-		return NULL;
+		return -1;
     buffer[len] = '\0';
     app_launch_dir = std::string(buffer);
     app_launch_dir = app_launch_dir.substr(0, app_launch_dir.rfind('/') + 1);
@@ -111,4 +111,6 @@ int init_settings(int argc, const char** argv) /* Inicjalizacja konfiguracji pro
     check_and_make_setting(global_config, "ftp.port", Setting::TypeString, "21");
     check_and_make_setting(global_config, "ftp.username", Setting::TypeString, "anonymous");
     check_and_make_setting(global_config, "ftp.password", Setting::TypeString, "");
+
+    return 0;
 }

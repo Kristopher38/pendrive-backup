@@ -21,19 +21,21 @@ int drop_root(std::string drop_to) /* Przelogowuje się z roota na użytkownika 
     if (drop_to.length() == 0)
         return -1;
 
-    /* Pobranie największej wartości bufora na nazwę usera i grupy */
-    long const buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
-    if (buflen == -1)
+    /* Workaround w celu kompatybilności z każdą instalacją systemu (nie można statycznie zlinkować glibc potrzebnego do getpwnam_r) */
+    /* Wykonaj komendę getent passwd nazwa_użytkownika | cut -d ":" --fields=3,4 aby otrzymać uid i gid użytkownika o danej nazwie sformatowane w postaci uid:gid */
+    std::string command("getent passwd " + drop_to + " | cut -d \":\" --fields=3,4");
+    FILE* fp = popen(command.c_str(), "r");
+    if (fp == NULL)
         return -1;
 
-    /* Pobranie zawartości pliku passwd zawierającego informacje o UID i GID użytkownika i grupy, niezbędnych do przelogowania */
-    char buf[buflen];
-    struct passwd pwbuf, *pwbufp;
-    if (0 != getpwnam_r(drop_to.c_str(), &pwbuf, buf, buflen, &pwbufp) || !pwbufp)
+    int uid;
+    int gid;
+    /* Odczytaj uid i gid z deskryptora komendy (zparsuj output komendy) */
+    if (fscanf(fp, "%d:%d", &uid, &gid) != 2)
         return -1;
 
-    int resgid = setgid(pwbufp->pw_gid); /* Zmiana uprawnień grupy (przelogowanie na grupę użytkownika) */
-    int resuid = setuid(pwbufp->pw_uid); /* Zmiana uprawnień użytkownika (przelogowanie na użytkownika) */
+    int resgid = setgid(gid); /* Zmiana uprawnień grupy (przelogowanie na grupę użytkownika) */
+    int resuid = setuid(uid); /* Zmiana uprawnień użytkownika (przelogowanie na użytkownika) */
     if ((resgid == -1) || (resuid == -1))
         return -1;
     else return 0;

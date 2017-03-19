@@ -16,6 +16,7 @@
 					<Add option="-g -std=c++11 -W" />
 				</Compiler>
 				<Linker>
+					<Add option="-static" />
 					<Add option="-lconfig++" />
 				</Linker>
 			</Target>
