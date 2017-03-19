@@ -25,6 +25,7 @@ case "$1" in
 	stop) # stop usługi
 		echo "[$(date +"%T")] Stopping service..."
 		proc_list=$(pgrep --exact pbackup)	# pobranie listy id procesów o nazwie takiej jak nazwa programu
+		proc_list="$proc_list\n$(pgrep -f "bash./etc/pbackup/usb")"
 
 		# iterowanie przez listę
 		printf '%s\n' "$proc_list" | while IFS= read -r pid
