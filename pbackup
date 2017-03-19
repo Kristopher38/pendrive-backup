@@ -25,14 +25,14 @@ case "$1" in
 	stop) # stop usługi
 		echo "[$(date +"%T")] Stopping service..."
 		proc_list=$(pgrep --exact pbackup)	# pobranie listy id procesów o nazwie takiej jak nazwa programu
-		proc_list="$proc_list\n$(pgrep -f "bash./etc/pbackup/usb")"
+		proc_list="$proc_list $(pgrep -f "bash./etc/pbackup/usb")"
 
 		# iterowanie przez listę
-		printf '%s\n' "$proc_list" | while IFS= read -r pid
+		for pid in $proc_list
 		do
 			if [ "$pid" = "$$" ]
 			then
-				break
+				continue
 			else
 				echo "[$(date +"%T")] stopping process $pid"
 				sudo kill -10 $pid >/dev/null 2>&1		# wysyłanie sygnału kończenia pracy do każdego procesu o id z listy
@@ -40,9 +40,10 @@ case "$1" in
 		done
 
 		proc_list=$(pgrep --exact pbackup)  # ponowne pobranie listy id procesów o nazwie programu
+		proc_list="$proc_list $(pgrep -f "bash./etc/pbackup/usb")"
 
 		# ponowne przeiterowanie przez listę
-		printf '%s\n' "$proc_list" | while IFS= read -r pid
+		for pid in $proc_list
 		do
 			# pętla czekająca na zakończenie każdego procesu z listy z osobna
 			while kill -0 $pid >/dev/null 2>&1

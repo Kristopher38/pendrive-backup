@@ -13,30 +13,6 @@ int initialize_filecopier() /* Inicjalizacja zmiennych niezbędnych do poprawneg
     return 0;
 }
 
-/*std::string get_program_name_from_pid(int pid)  /* Zwraca nazwę programu na podstawie id procesu */
-/*{
-    std::string program_name;                                                                   /* nazwa programu */
-/*    std::string path = std::string("/proc/") + std::to_string(pid) + std::string("/cmdline");   /* ścieżka do pliku z nazwą programu */
-
-    /* otwarcie pliku */
-/*    std::ifstream procfile(path, std::ifstream::in);
-    if (procfile.good())
-    {
-        /* pobranie nazwy programu z pliku i odpowiednie jej przetworzenie */
-/*        procfile>>program_name;
-        if (program_name.length() > 0)
-        {
-            std::size_t pos = program_name.find('\0');
-            if (pos != std::string::npos)
-                program_name.erase(pos, std::string::npos);
-            pos = program_name.find("^@");
-            if (pos != std::string::npos)
-                program_name.erase(pos, std::string::npos);
-        }
-    }
-	return program_name;
-}*/
-
 std::string get_program_name_from_pid (int pid)
 {
     char buffer[PATH_MAX];

@@ -3,13 +3,13 @@
 std::string get_user_perm_name() /* Zwraca nazwę użytkownika na którego program ma się logować (z którego uprawnieniami ma działać) */
 {
     /* Odczyt z pliku userperm */
-    std::ifstream userfile(app_launch_dir + "userperm", std::ifstream::in);
+    std::ifstream userfile("/etc/pbackup/userperm", std::ifstream::in);
     std::string user;
     if (userfile.good())
         userfile>>user;
     /* W przypadku błędów funkcja zwraca pusty string */
     else {
-        std::cerr<<"I/O error while reading user permission file (does userperm file exists?)"<<std::endl;
+        std::cerr<<"I/O error while reading user permission file (check if /etc/pbackup/userperm file exists)"<<std::endl;
         return std::string();
     }
     return user;

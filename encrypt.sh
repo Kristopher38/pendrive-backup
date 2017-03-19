@@ -19,12 +19,12 @@ if ! [ -f "$1/backup.tar" -o -r "$1/backup.tar" ]; then		# sprawdzenie czy plik 
 	echo "$1/backup.tar file doesn't exist or no permission to read"
 	exit 1
 fi
-if ! [ -f "$PENDRIVE_DIR/secret.key" -a -r "$PENDRIVE_DIR/secret.key" ]; then			# sprawdzenie czy plik z kluczem (zaszyfrowanym hasłem) istnieje i mamy do niego prawa odczytu
-	echo "secret.key file (encrypted file with password) doesn't exist or no permission to read"
+if ! [ -f "/etc/pbackup/secret.key" -a -r "/etc/pbackup/secret.key" ]; then			# sprawdzenie czy plik z kluczem (zaszyfrowanym hasłem) istnieje i mamy do niego prawa odczytu
+	echo "/etc/pbackup/secret.key file (encrypted file with password) doesn't exist or no permission to read"
 	exit 1
 fi
 
-aescrypt -e -k $PENDRIVE_DIR/secret.key $1/backup.tar		# zaszyfruj archiwum z kluczem secret.key
+aescrypt -e -k /etc/pbackup/secret.key $1/backup.tar		# zaszyfruj archiwum z kluczem secret.key
 AES_CODE=$?
 rm $1/backup.tar							# usuń niezaszyfrowane archiwum.tar
 exit $AES_CODE								# wyjdź ze status kodem aescrypta
