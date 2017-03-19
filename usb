@@ -16,19 +16,18 @@ do
 		mount "$DEVPATH" "$MOUNTPOINT" >> /dev/null 2>&1	# zamontuj pamięć masową 
 		if [ $? -eq 0 ] 	# sprawdź czy montowanie się powiodło
 		then
+			echo "[$(date +"%T")] Failed mounting backup drive (is it already mounted?), trying to run backup program"
+		else
 			echo "[$(date +"%T")] Successfully mounted backup drive"
-			ISMOUNTED="true"
-			if [ -r "$MOUNTPOINT/pbackup" -a -x "$MOUNTPOINT/pbackup" ] 	# sprawdź czy plik programu istnieje i mamy do niego prawa odczytu i wykonania
-			then
-				echo "[$(date +"%T")] Starting backup program"
-				"$MOUNTPOINT/pbackup"		# uruchom program
-				exit						# exit wykona się po zakończeniu pracy programu
-			else	# nie znaleziono programu lub uprawnienia nie pozwalają na uruchomienie
-				echo "[$(date +"%T")] Program executable not found on backup drive or permissions don't allow for execute"
-				exit 1
-			fi
-		else	# montowanie nie powiodło się
-			echo "[$(date +"%T")] Failed mounting backup drive"
+		fi
+		ISMOUNTED="true"
+		if [ -r "$MOUNTPOINT/pbackup" -a -x "$MOUNTPOINT/pbackup" ] 	# sprawdź czy plik programu istnieje i mamy do niego prawa odczytu i wykonania
+		then
+			echo "[$(date +"%T")] Starting backup program"
+			"$MOUNTPOINT/pbackup"		# uruchom program
+			exit						# exit wykona się po zakończeniu pracy programu
+		else	# nie znaleziono programu lub uprawnienia nie pozwalają na uruchomienie
+			echo "[$(date +"%T")] Program executable not found on backup drive or permissions don't allow for execute"
 			exit 1
 		fi
 	else

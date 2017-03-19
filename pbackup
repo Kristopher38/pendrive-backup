@@ -25,24 +25,34 @@ case "$1" in
 	stop) # stop usługi
 		echo "[$(date +"%T")] Stopping service..."
 		proc_list=$(pgrep --exact pbackup)	# pobranie listy id procesów o nazwie takiej jak nazwa programu
-		
+
 		# iterowanie przez listę
 		printf '%s\n' "$proc_list" | while IFS= read -r pid
 		do
-			echo "[$(date +"%T")] killing process $pid with name $(ps -p $pid -o comm= )"
-			sudo kill -10 $pid >/dev/null 2>&1		# wysyłanie sygnału kończenia pracy do każdego procesu o id z listy
+			if [ "$pid" = "$$" ]
+			then
+				break
+			else
+				echo "[$(date +"%T")] stopping process $pid"
+				sudo kill -10 $pid >/dev/null 2>&1		# wysyłanie sygnału kończenia pracy do każdego procesu o id z listy
+			fi
 		done
 
 		proc_list=$(pgrep --exact pbackup)  # ponowne pobranie listy id procesów o nazwie programu
-		
+
 		# ponowne przeiterowanie przez listę
 		printf '%s\n' "$proc_list" | while IFS= read -r pid
 		do
 			# pętla czekająca na zakończenie każdego procesu z listy z osobna
 			while kill -0 $pid >/dev/null 2>&1
 			do
-				echo "[$(date +"%T")] waiting for process $pid"
-  				sleep 1
+				if [ "$pid" = "$$" ]
+				then
+					break
+				else
+					echo "[$(date +"%T")] waiting for process $pid to exit"
+  					sleep 1
+				fi
 			done
 		done
 	;;
