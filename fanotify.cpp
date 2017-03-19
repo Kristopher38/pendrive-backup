@@ -36,7 +36,7 @@ int initialize_fanotify() /* Inicjalizacja fanotify i monitorowanych ścieżek, 
     }
 
     /* Utwórz fanotify */
-    int fanotify_fd = fanotify_init(FAN_CLOEXEC | FAN_NONBLOCK, O_RDONLY | O_CLOEXEC | O_LARGEFILE | O_NOATIME);
+    int fanotify_fd = fanotify_init(FAN_CLOEXEC | FAN_NONBLOCK | FAN_UNLIMITED_MARKS | FAN_UNLIMITED_QUEUE, O_RDONLY | O_CLOEXEC | O_LARGEFILE | O_NOATIME);
     if (fanotify_fd < 0)
     {
         fprintf (stderr, "Couldn't setup new fanotify device: %s\n", strerror (errno));
@@ -46,12 +46,15 @@ int initialize_fanotify() /* Inicjalizacja fanotify i monitorowanych ścieżek, 
     /* Pobierz maskę monitorowanych eventów dyskowych */
     uint64_t event_mask = initialize_event_mask();
 
+    /* Sprawdź opcję followowania symlinków */
+    bool dont_follow_symlinks = !global_config.lookup("general.follow_symlinks");
+
     /* Dodaj monitorowane mountpointy */
     for (int i = 0; i < global_config.lookup("monitoring.mounts").getLength(); ++i)
     {
         const char* monitored_mount = global_config.lookup("monitoring.mounts")[i]; /* Pobierz ścieżkę z konfiguracji */
         /* Dodaj monitorowanie na mountpoint */
-        if (fanotify_mark(fanotify_fd, FAN_MARK_ADD | FAN_MARK_MOUNT, event_mask, 0, monitored_mount) < 0)
+        if (fanotify_mark(fanotify_fd, FAN_MARK_ADD | FAN_MARK_MOUNT | (dont_follow_symlinks ? FAN_MARK_DONT_FOLLOW : 0), event_mask, 0, monitored_mount) < 0)
             std::cerr<<"Couldn't add monitor on mount "<<monitored_mount<<": "<<strerror(errno)<<std::endl;
         else std::cout<<"Started monitoring mount "<<monitored_mount<<std::endl;
     }
@@ -60,7 +63,7 @@ int initialize_fanotify() /* Inicjalizacja fanotify i monitorowanych ścieżek, 
     {
         const char* monitored_file = global_config.lookup("monitoring.files_and_dirs")[i];  /* Pobierz ścieżkę z konfiguracji */
         /* Dodaj monitorowanie na plik/katalog */
-        if (fanotify_mark(fanotify_fd, FAN_MARK_ADD, event_mask | FAN_EVENT_ON_CHILD, 0, monitored_file) < 0)
+        if (fanotify_mark(fanotify_fd, FAN_MARK_ADD | (dont_follow_symlinks ? FAN_MARK_DONT_FOLLOW : 0), event_mask | FAN_EVENT_ON_CHILD, 0, monitored_file) < 0)
             std::cerr<<"Couldn't add monitor on file or directory "<<monitored_file<<": "<<strerror(errno)<<std::endl;
         else std::cout<<"Started monitoring file or directory "<<monitored_file<<std::endl;
     }
@@ -69,7 +72,7 @@ int initialize_fanotify() /* Inicjalizacja fanotify i monitorowanych ścieżek, 
     {
         const char* monitored_dirtree = global_config.lookup("monitoring.directory_trees")[i];  /* Pobierz ścieżkę z konfiguracji */
         /* Dodaj monitorowanie na drzewo katalogowe (tak naprawdę mountpoint, fanotify nie obsługuje monitorowania drzew katalogowych poza całymi mountami, funkcjonalność ta jest obsługiwana podczas filtrowania w funkcji add_file_to_list */
-        if (fanotify_mark(fanotify_fd, FAN_MARK_ADD | FAN_MARK_MOUNT, event_mask, 0, monitored_dirtree) < 0)
+        if (fanotify_mark(fanotify_fd, FAN_MARK_ADD | FAN_MARK_MOUNT | (dont_follow_symlinks ? FAN_MARK_DONT_FOLLOW : 0), event_mask, 0, monitored_dirtree) < 0)
             std::cerr<<"Couldn't add monitor on directory tree "<<monitored_dirtree<<": "<<strerror(errno)<<std::endl;
         else std::cout<<"Started monitoring directory tree "<<monitored_dirtree<<std::endl;
     }

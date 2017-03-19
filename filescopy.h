@@ -18,7 +18,7 @@
 #include "settings.h"
 
 /* Size of buffer to use when reading fanotify events */
-#define FANOTIFY_BUFFER_SIZE 8192
+#define FANOTIFY_BUFFER_SIZE 16384
 
 extern std::string pendrive_dir;
 
@@ -29,6 +29,7 @@ bool filter_out(std::string filter_config, std::string text_to_match);
 bool is_directory(std::string path);
 bool is_small(std::string path);
 bool is_child(std::string parent, std::string child);
+mode_t interpret_string(std::string permissions);
 std::string target_path(std::string source_path);
 void copy_file(std::string from, std::string to);
 void make_dirs(std::string source_path);

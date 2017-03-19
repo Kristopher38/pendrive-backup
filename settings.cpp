@@ -79,6 +79,8 @@ int init_settings() /* Inicjalizacja konfiguracji programu */
     /* Sprawdzenie poprawności wszystkich opcji konfiguracyjnych (czy istnieje, czy ma poprawny typ) - po więcej informacji dot. poszczególnych opcji patrz dokumentacja pliku konfiguracyjnego */
     check_and_make_setting(global_config, "general", Setting::TypeGroup);
     check_and_make_setting(global_config, "general.preserve_permissions", Setting::TypeBoolean, true);
+    check_and_make_setting(global_config, "general.follow_symlinks", Setting::TypeBoolean, true);
+    check_and_make_setting(global_config, "general.default_permissions", Setting::TypeString, "rwx------");
     check_and_make_setting(global_config, "general.encrypt_files", Setting::TypeBoolean, true);
     check_and_make_setting(global_config, "general.send_to_ftp", Setting::TypeBoolean, false);
     check_and_make_setting(global_config, "general.send_to_phone", Setting::TypeBoolean, false);

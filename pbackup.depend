@@ -1,5 +1,5 @@
 # depslib dependency file v1.0
-1489927129 source:/home/kris/Pulpit/pbackup/main.cpp
+1489927719 source:/home/kris/Pulpit/pbackup/main.cpp
 	<unistd.h>
 	<poll.h>
 	<string.h>
@@ -40,7 +40,7 @@
 	<fstream>
 	"filescopy.h"
 
-1489346245 source:/home/kris/Pulpit/pbackup/fanotify.cpp
+1489937297 source:/home/kris/Pulpit/pbackup/fanotify.cpp
 	"fanotify.h"
 
 1488306056 /home/kris/Pulpit/pbackup/fanotify.h
@@ -52,10 +52,10 @@
 	<iostream>
 	<libconfig.h++>
 
-1489921187 source:/home/kris/Pulpit/pbackup/filescopy.cpp
+1489941873 source:/home/kris/Pulpit/pbackup/filescopy.cpp
 	"filescopy.h"
 
-1489921187 /home/kris/Pulpit/pbackup/filescopy.h
+1489940792 /home/kris/Pulpit/pbackup/filescopy.h
 	<sys/fanotify.h>
 	<sys/stat.h>
 	<limits.h>
@@ -70,7 +70,7 @@
 	<iostream>
 	"settings.h"
 
-1489924967 /home/kris/Pulpit/pbackup/settings.h
+1489927719 /home/kris/Pulpit/pbackup/settings.h
 	<iostream>
 	<string>
 	<limits.h>
@@ -84,19 +84,19 @@
 	<sys/signalfd.h>
 	<iostream>
 
-1489925028 source:/home/kris/Pulpit/pbackup/settings.cpp
+1489940774 source:/home/kris/Pulpit/pbackup/settings.cpp
 	"settings.h"
 
 1489346236 source:/home/kris/Pulpit/pbackup/signals.cpp
 	"signals.h"
 
-1489927147 /home/kris/Pulpit/pbackup/permissions.h
+1489927719 /home/kris/Pulpit/pbackup/permissions.h
 	<unistd.h>
 	<iostream>
 	<fstream>
 	"settings.h"
 
-1489926993 source:/home/kris/Pulpit/pbackup/permissions.cpp
+1489930385 source:/home/kris/Pulpit/pbackup/permissions.cpp
 	"permissions.h"
 
 1489409237 source:/home/kris/Pulpit/pbackup/ftp.cpp

@@ -153,6 +153,25 @@ bool is_child(std::string parent, std::string child) /* sprawdza czy ścieżka '
     else return false;
 }
 
+mode_t interpret_string(std::string permissions)
+{
+    mode_t mask = 0;
+    if (permissions.length() < 9)
+        return S_IRWXU; // 700
+
+    if (permissions[0] == 'r') mask |= S_IRUSR;
+    if (permissions[1] == 'w') mask |= S_IWUSR;
+    if (permissions[2] == 'x') mask |= S_IXUSR;
+    if (permissions[3] == 'r') mask |= S_IRGRP;
+    if (permissions[4] == 'w') mask |= S_IWGRP;
+    if (permissions[5] == 'x') mask |= S_IXGRP;
+    if (permissions[6] == 'r') mask |= S_IROTH;
+    if (permissions[7] == 'w') mask |= S_IWOTH;
+    if (permissions[8] == 'x') mask |= S_IXOTH;
+
+    return mask;
+}
+
 std::string target_path(std::string source_path)    /* zwraca pełną absolutną ścieżkę do której mają być kopiowane pliku */
 {
     return pendrive_dir + source_path.substr(1, std::string::npos); /* łączy ścieżkę pamięci masowej ze ścieżką z której pochodzi event dyskowy */
@@ -170,9 +189,11 @@ void copy_file(std::string from, std::string to) /* kopiuje pojedynczy plik ze �
         fstat(source_file, &stat_source); /* Pobierz metadane o pliku ze ścieżki 'from' */
 
         /* Jeśli program ma zachowywać uprawnienia, plików, utwórz plik w ścieżce 'to' z uprawnieniami pliku ze ścieżki 'from', w przeciwnym razie po prostu utwórz, w trybie zapisu */
-        if (global_config.lookup("general.preserve_permissions"))
-            target = open(to.c_str(), O_WRONLY | O_CREAT | O_TRUNC, stat_source.st_mode);
-        else target = open(to.c_str(), O_WRONLY | O_CREAT | O_TRUNC);
+        bool preserve_permissions = global_config.lookup("general.preserve_permissions");
+        std::string permissions = global_config.lookup("general.default_permissions");
+        mode_t default_perm = interpret_string(permissions);
+
+        target = open(to.c_str(), O_WRONLY | O_CREAT | O_TRUNC, (preserve_permissions ? stat_source.st_mode : default_perm));
 
         if (target == -1)
             fprintf(stderr, "Error open(): %s, path: %s\n", strerror(errno), to.c_str());
@@ -227,7 +248,11 @@ void make_dirs(std::string source_path) /* Tworzy strukturę katalogów na pami�
             }
 
             /* Utwórz katalog z takimi samymi uprawnieniami katalog źródłowy */
-            if (mkdir(current_dir.c_str(), st.st_mode) < 0)
+            bool preserve_permissions = global_config.lookup("general.preserve_permissions");
+            std::string permissions = global_config.lookup("general.default_permissions");
+            mode_t default_perm = interpret_string(permissions);
+
+            if (mkdir(current_dir.c_str(), (preserve_permissions ? st.st_mode : default_perm)) < 0)
                 std::cerr<<"Error mkdir(): "<<strerror(errno)<<", path: "<<current_dir<<std::endl;
         }
     }
