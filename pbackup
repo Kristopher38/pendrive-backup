@@ -11,54 +11,55 @@
 
 # ^^^ Nagłówek LSB skryptów init.d, wraz z wymaganymi zależnościami
 
+# Skrypt odpowiedzialny automontowanie i autouruchomienie programu, oraz kończenie pracy programu podczas zamykania komputera. Znajduje się na dysku komputera i jest usługą systemd. Przy starcie systemu uruchamia działający w tle skrypt /etc/pbackup/usb który odpowiedzialny jest za automatyczne uruchomienie i zamontowanie pamięci masowej. Podczas zamykania systemu skrypt wysyła do programu sygnał, który program interpretuje jako polecenie rozpoczęcia wykonywania czynności końcowych. Wysyła także sygnały kończące pracę skryptu /etc/pbackup/usb. Wstrzymuje zamknięcie systemu do czasu, aż program wykona wszystkie czynności końcowe.
+
 # Przekierowanie całego wyjścia programu do pliku
 LOGFILE="/var/log/pbackup.log"
 exec >> $LOGFILE
 exec 2>&1
 
 # standardowe w skryptach init.d sprawdzanie co skrypt ma zrobić z usługą (zatrzymać/uruchomić)
-case "$1" in
-	start) # start usługi
+case "$1" in																# wykonanie odpowiednich instrukcji dla poszczególnych argumentów
+	start) 																	# start usługi
 		echo "[$(date +"%T")] Starting automounter script"
 		sudo setsid bash /etc/pbackup/usb >>$LOGFILE 2>&1 < $LOGFILE & 		# uruchomienie z całkowitym odłączeniem od procesu wykonującego skrypt, z przekierowaniem całego wyjścia do tego samego pliku z logami
 	;;
-	stop) # stop usługi
+	stop) 																	# stop usługi
 		echo "[$(date +"%T")] Stopping service..."
-		proc_list=$(pgrep --exact pbackup)	# pobranie listy id procesów o nazwie takiej jak nazwa programu
-		proc_list="$proc_list $(pgrep -f "bash./etc/pbackup/usb")"
+		proc_list=$(pgrep --exact pbackup)									# pobranie listy id procesów o nazwie takiej jak nazwa programu
+		proc_list="$proc_list $(pgrep -f "bash./etc/pbackup/usb")"			# pobranie listy id procesów o nazwie "bash" z argumentem jako ścieżka skryptu automatycznie uruchamiającego program i dopisanie do powyższej listy
 
 		# iterowanie przez listę
-		for pid in $proc_list
+		for pid in $proc_list												# dla każdego process id na liście
 		do
-			if [ "$pid" = "$$" ]
+			if [ "$pid" = "$$" ]											# sprawdź czy process id nie jest taki sam jak process id tego skryptu
 			then
-				continue
+				continue													# jeśli tak, pomiń
 			else
-				echo "[$(date +"%T")] stopping process $pid"
-				sudo kill -10 $pid >/dev/null 2>&1		# wysyłanie sygnału kończenia pracy do każdego procesu o id z listy
+				echo "[$(date +"%T")] stopping process $pid"				
+				sudo kill -10 $pid >/dev/null 2>&1							# jeśli nie, wyślij sygnał kończenia pracy do danego process id
 			fi
 		done
 
-		proc_list=$(pgrep --exact pbackup)  # ponowne pobranie listy id procesów o nazwie programu
-		proc_list="$proc_list $(pgrep -f "bash./etc/pbackup/usb")"
+		proc_list=$(pgrep --exact pbackup) 									# ponowne pobranie listy id procesów o nazwie programu
+		proc_list="$proc_list $(pgrep -f "bash./etc/pbackup/usb")"			# ponowne pobranie listy id procesów z argumentem ścieżki skryptu autouruchamiającego i dopisanie do powyższej listy
 
 		# ponowne przeiterowanie przez listę
-		for pid in $proc_list
+		for pid in $proc_list												# dla każdego process id na liście
 		do
-			# pętla czekająca na zakończenie każdego procesu z listy z osobna
-			while kill -0 $pid >/dev/null 2>&1
+			while kill -0 $pid >/dev/null 2>&1								# dopóki process nie zakończy działania
 			do
-				if [ "$pid" = "$$" ]
+				if [ "$pid" = "$$" ]										# sprawdź czy process id nie jest taki sam jak process id tego skryptu
 				then
-					break
+					break													# jeśli tak, pomiń
 				else
 					echo "[$(date +"%T")] waiting for process $pid to exit"
-  					sleep 1
+  					sleep 1													# jeśli nie, odczekaj 1s i sprawdź ponownie czy się zakończył
 				fi
 			done
 		done
 	;;
-	*)	# błędne argumenty, informacja o sposobie użycia
+	*)																		# podane zostały błędne argumenty, wyświetlenie informacji o sposobie użycia
 		echo "[$(date +"%T")] Usage: pbackup {start|stop}"
 		exit 1
 	;;

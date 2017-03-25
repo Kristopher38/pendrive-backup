@@ -70,7 +70,7 @@
 	<iostream>
 	"settings.h"
 
-1489927719 /home/kris/Pulpit/pbackup/settings.h
+1490465248 /home/kris/Pulpit/pbackup/settings.h
 	<iostream>
 	<string>
 	<limits.h>
@@ -90,13 +90,13 @@
 1489346236 source:/home/kris/Pulpit/pbackup/signals.cpp
 	"signals.h"
 
-1489927719 /home/kris/Pulpit/pbackup/permissions.h
+1490465438 /home/kris/Pulpit/pbackup/permissions.h
 	<unistd.h>
 	<iostream>
 	<fstream>
 	"settings.h"
 
-1489930385 source:/home/kris/Pulpit/pbackup/permissions.cpp
+1489934328 source:/home/kris/Pulpit/pbackup/permissions.cpp
 	"permissions.h"
 
 1489409237 source:/home/kris/Pulpit/pbackup/ftp.cpp

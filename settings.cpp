@@ -5,7 +5,10 @@ using namespace libconfig;
 Config global_config;
 std::string app_launch_dir;
 
-/* Sprawdza w konfiguracji 'cfg' czy dana opcja o nazwie 'name' i typie 'val_type' istnieje (a jeśli jest listą, to czy typ jej elementów jest taki sam jak 'list_type'), jeśli nie to usuwa wadliwą opcję i tworzy nową o właściwym typie z wartością domyślną 'value'. Zwraca true w przypadku konieczności "naprawienia" opcji, false gdy opcja była zdefiniowana poprawnie */
+/* Sprawdza w konfiguracji 'cfg' czy dana opcja o nazwie 'name' i typie 'val_type' istnieje
+(a jeśli jest listą, to czy typ jej elementów jest taki sam jak 'list_type'), jeśli nie to
+usuwa wadliwą opcję i tworzy nową o właściwym typie z wartością domyślną 'value'. Zwraca true
+ w przypadku konieczności "naprawienia" opcji, false gdy opcja była zdefiniowana poprawnie */
 template <typename T=int> bool check_and_make_setting(Config& cfg, std::string name, Setting::Type val_type, T value, Setting::Type list_type)
 {
     /* Sprawdzenie czy opcja istnieje, czy jest właściwego typu, i czy elementy listy (jeśli jest listą) są właściwego typu - jeśli coś jest nie tak, kontynuuj */
@@ -47,7 +50,7 @@ template <typename T=int> bool check_and_make_setting(Config& cfg, std::string n
         }
         return true;
     }
-    return false;
+    else return false;
 }
 
 int init_settings() /* Inicjalizacja konfiguracji programu */
@@ -76,7 +79,8 @@ int init_settings() /* Inicjalizacja konfiguracji programu */
         std::cerr<<"Warning: Configuration file parsing error at "<<pex.getFile()<<":"<<pex.getLine()<<" - "<<pex.getError()<<", using default settings"<<std::endl;
     }
 
-    /* Sprawdzenie poprawności wszystkich opcji konfiguracyjnych (czy istnieje, czy ma poprawny typ) - po więcej informacji dot. poszczególnych opcji patrz dokumentacja pliku konfiguracyjnego */
+    /* Sprawdzenie poprawności wszystkich opcji konfiguracyjnych (czy istnieje, czy ma poprawny typ)
+    - po więcej informacji dot. poszczególnych opcji patrz dokumentacja pliku konfiguracyjnego */
     check_and_make_setting(global_config, "general", Setting::TypeGroup);
     check_and_make_setting(global_config, "general.preserve_permissions", Setting::TypeBoolean, true);
     check_and_make_setting(global_config, "general.follow_symlinks", Setting::TypeBoolean, true);

@@ -18,6 +18,7 @@ uint64_t initialize_event_mask() /* Zwraca maskę monitorowanych eventów dyskow
     if (global_config.lookup("monitored_events.close"))
         event_mask |= FAN_CLOSE;
 
+    /* Zwrócenie maski eventów */
     return event_mask;
 }
 
@@ -71,11 +72,14 @@ int initialize_fanotify() /* Inicjalizacja fanotify i monitorowanych ścieżek, 
     for (int i = 0; i < global_config.lookup("monitoring.directory_trees").getLength(); ++i)    // add files and directories to be monitored
     {
         const char* monitored_dirtree = global_config.lookup("monitoring.directory_trees")[i];  /* Pobierz ścieżkę z konfiguracji */
-        /* Dodaj monitorowanie na drzewo katalogowe (tak naprawdę mountpoint, fanotify nie obsługuje monitorowania drzew katalogowych poza całymi mountami, funkcjonalność ta jest obsługiwana podczas filtrowania w funkcji add_file_to_list */
+        /* Dodaj monitorowanie na drzewo katalogowe (tak naprawdę mountpoint, fanotify nie obsługuje
+        monitorowania drzew katalogowych poza całymi mountami, funkcjonalność ta jest obsługiwana podczas
+        filtrowania w funkcji add_file_to_list) */
         if (fanotify_mark(fanotify_fd, FAN_MARK_ADD | FAN_MARK_MOUNT | (dont_follow_symlinks ? FAN_MARK_DONT_FOLLOW : 0), event_mask, 0, monitored_dirtree) < 0)
             std::cerr<<"Couldn't add monitor on directory tree "<<monitored_dirtree<<": "<<strerror(errno)<<std::endl;
         else std::cout<<"Started monitoring directory tree "<<monitored_dirtree<<std::endl;
     }
 
+    /* Zwrócenie deskryptora fanotify */
     return fanotify_fd;
 }

@@ -30,5 +30,6 @@ int initialize_signals() /* Inicjalizacja sygnałów, zwraca deskryptor do odczy
 		return -1;
 	}
 
+    /* Zwrócenie deskryptora sygnałów */
 	return signal_fd;
 }

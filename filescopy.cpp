@@ -2,46 +2,43 @@
 
 using namespace libconfig;
 
-std::string pendrive_dir;               /* Ścieżka w drzewie katalogowym w której zamontowany jest pendrive */
-const std::string app_name("pbackup");  /* Nazwa procesu */
-std::set<std::string> files_to_copy;    /* Lista używanych plików */
+std::string pendrive_dir;               /* Pełna ścieżka do kopiowania plików; ścieżka pamięci masowej + podścieżka na pamięci masowej */
+const std::string app_name("pbackup");  /* Nazwa naszego programu (procesu) */
+std::set<std::string> files_to_copy;    /* Lista używanych podczas danej sesji plików */
 
 int initialize_filecopier() /* Inicjalizacja zmiennych niezbędnych do poprawnego kopiowania plików */
 {
-    std::string copy_dir = global_config.lookup("general.copy_directory");
-    pendrive_dir = app_launch_dir + copy_dir + "/";
+    std::string copy_dir = global_config.lookup("general.copy_directory");  /* Pobierz podścieżkę kopiowania na pamięć masową z configu */
+    pendrive_dir = app_launch_dir + copy_dir + "/";                         /* pendrive_dir = pełna ścieżka do kopiowania plików; ścieżka pamięci masowej + podścieżka na pamięci masowej */
     return 0;
 }
 
-std::string get_program_name_from_pid (int pid)
+std::string get_program_name_from_pid (int pid) /* Pobierz nazwę procesu na podstawie process id z wygenerowanego eventu dyskowego */
 {
     char buffer[PATH_MAX];
 	int fd;
 	ssize_t len;
 	char *aux;
 
-	/* Try to get program name by PID */
+	/* Utwórz ścieżkę pliku /proc/process_id/cmdline */
 	sprintf(buffer, "/proc/%d/cmdline", pid);
-	if ((fd = open(buffer, O_RDONLY)) < 0)
-		return std::string();
+	if ((fd = open(buffer, O_RDONLY)) < 0)  /* Otwórz plik z informacjami nt. programu */
+		return std::string();   /* Zwróć pustego stringa w przypadku błędu */
 
 	/* Read file contents into buffer */
-	if ((len = read(fd, buffer, PATH_MAX - 1)) <= 0)
+	if ((len = read(fd, buffer, PATH_MAX - 1)) <= 0) /* Wczytaj zawartość pliku do bufora */
 	{
-		close(fd);
-		return std::string();
+		close(fd);  /* Zamknij plik */
+		return std::string();   /* Zwróć pustego stringa w przypadku błędu */
 	}
-	close(fd);
+	close(fd);  /* Zamknij plik */
 
-	buffer[len] = '\0';
-	aux = strstr(buffer, "^@");
-	if (aux)
-		*aux = '\0';
-    try {
-        return std::string(buffer);
-    } catch (const std::exception& e){
-        return std::string();
-    }
+	buffer[len] = '\0'; /* Zakończ wczytany bufor null characterem */
+	aux = strstr(buffer, "^@"); /* Znajdź znaki ^@ w buforze */
+	if (aux)    /* Jeśli znalazł podane znaki */
+		*aux = '\0';    /* Ustaw w tamtym miejscu null character (to co jest za tymi znakami to nieinteresujące nas śmieci) */
+
+    return std::string(buffer); /* Zwróć bufor w postaci stringa */
 }
 
 std::string get_file_path_from_fd(int fd) /* Zwraca ścieżkę pliku na podstawie jego deskryptora */

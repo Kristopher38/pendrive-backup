@@ -1,4 +1,6 @@
 #!/bin/sh
+# Skrypt odpowiedzialny za automatyczne zamontowanie pamięci masowej i uruchomienie głównego programu znajdującego się na niej. Znajduje się na dysku komputera. Używając dowiązań symbolicznych udostępnianych przez system, skrypt cyklicznie w nieskończonej pętli monitoruje, czy pamięć masowa z programem o danym UUID jest podłączona, jeżeli tak to jest automatycznie montowana w ustalonym katalogu i uruchamiany jest znajdujący się na niej program.
+
 # definicja punktu montowania i UUID pamięci masowej na której znajduje się program
 MOUNTPOINT="/media/kris/backup"
 UUID="c698ed03-f622-4cdd-b817-6d33c0199de6"
@@ -7,30 +9,30 @@ UUID="c698ed03-f622-4cdd-b817-6d33c0199de6"
 UUIDPATH="/dev/disk/by-uuid/$UUID"
 ISMOUNTED="false"
 
-# pętla dopóki nie zostanie zamontowany
+# pętla dopóki pamięć masowa nie zostanie zamontowana
 while [ "$ISMOUNTED" = "false" ]
 do
-	DEVPATH=$(readlink -f "$UUIDPATH")		# pobierz ścieżkę pliku blokowego pamięci masowej
-	if [ "$DEVPATH" != "$UUIDPATH" ]		# jeśli jest różna od UUID to znaczy że pamięć masowa została podpięta do komputera
+	DEVPATH=$(readlink -f "$UUIDPATH")						# pobierz ścieżkę pliku blokowego pamięci masowej
+	if [ "$DEVPATH" != "$UUIDPATH" ]						# jeśli jest różna od UUID to znaczy że pamięć masowa została podpięta do komputera
 	then
 		mount "$DEVPATH" "$MOUNTPOINT" >> /dev/null 2>&1	# zamontuj pamięć masową 
-		if [ $? -eq 0 ] 	# sprawdź czy montowanie się powiodło
+		if [ $? -eq 0 ] 									# sprawdź czy montowanie się powiodło
 		then
-			echo "[$(date +"%T")] Failed mounting backup drive (is it already mounted?), trying to run backup program"
+			echo "[$(date +"%T")] Failed mounting backup drive (is it already mounted?), trying to run backup program"	# jeśli nie, wypisz informację o błędzie
 		else
-			echo "[$(date +"%T")] Successfully mounted backup drive"
+			echo "[$(date +"%T")] Successfully mounted backup drive"													# jeśli tak, wypisz informację o sukcesie
 		fi
 		ISMOUNTED="true"
 		if [ -r "$MOUNTPOINT/pbackup" -a -x "$MOUNTPOINT/pbackup" ] 	# sprawdź czy plik programu istnieje i mamy do niego prawa odczytu i wykonania
 		then
 			echo "[$(date +"%T")] Starting backup program"
-			"$MOUNTPOINT/pbackup"		# uruchom program
-			exit						# exit wykona się po zakończeniu pracy programu
-		else	# nie znaleziono programu lub uprawnienia nie pozwalają na uruchomienie
-			echo "[$(date +"%T")] Program executable not found on backup drive or permissions don't allow for execute"
+			"$MOUNTPOINT/pbackup"										# jeśli tak, uruchom program
+			exit														# (exit wykona się po zakończeniu pracy programu)
+		else															# nie znaleziono programu lub uprawnienia nie pozwalają na uruchomienie
+			echo "[$(date +"%T")] Program executable not found on backup drive or permissions don't allow for execute" # wypisz informację o braku programu na pamięci masowej lub braku uprawnień do uruchomienia
 			exit 1
 		fi
 	else
-		sleep 1	# jeśli ścieżka pliku blokowego jest taka sama jak UUID, to znaczy że pamięć masowa nie została jeszcze podpięta do komputera, w tym wypadku czekamy
+		sleep 1												# jeśli ścieżka pliku blokowego jest taka sama jak UUID, to znaczy że pamięć masowa nie została jeszcze podpięta do komputera - czekaj 1s i sprawdź ponownie
 	fi
 done
