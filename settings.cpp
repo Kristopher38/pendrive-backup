@@ -83,14 +83,14 @@ int init_settings() /* Inicjalizacja konfiguracji programu */
     check_and_make_setting(global_config, "general.default_permissions", Setting::TypeString, "rwx------");
     check_and_make_setting(global_config, "general.encrypt_files", Setting::TypeBoolean, true);
     check_and_make_setting(global_config, "general.send_to_ftp", Setting::TypeBoolean, false);
-    check_and_make_setting(global_config, "general.send_to_phone", Setting::TypeBoolean, false);
+    check_and_make_setting(global_config, "general.execute_userscript", Setting::TypeBoolean, false);
     check_and_make_setting(global_config, "general.copy_immediately_max_size", Setting::TypeInt64, 4096L);
     check_and_make_setting(global_config, "general.copy_directory", Setting::TypeString, "");
 
     check_and_make_setting(global_config, "filtering", Setting::TypeGroup);
-    check_and_make_setting(global_config, "filtering.extensions", Setting::TypeGroup);
-    check_and_make_setting(global_config, "filtering.extensions.filter_list", Setting::TypeArray, 0, Setting::TypeString);
-    check_and_make_setting(global_config, "filtering.extensions.filtering_behavior", Setting::TypeString, "blacklist");
+    check_and_make_setting(global_config, "filtering.filenames", Setting::TypeGroup);
+    check_and_make_setting(global_config, "filtering.filenames.filter_list", Setting::TypeArray, 0, Setting::TypeString);
+    check_and_make_setting(global_config, "filtering.filenames.filtering_behavior", Setting::TypeString, "blacklist");
     check_and_make_setting(global_config, "filtering.programs", Setting::TypeGroup);
     check_and_make_setting(global_config, "filtering.programs.filter_list", Setting::TypeArray, 0, Setting::TypeString);
     check_and_make_setting(global_config, "filtering.programs.filtering_behavior", Setting::TypeString, "blacklist");

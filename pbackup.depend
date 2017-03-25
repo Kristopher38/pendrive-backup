@@ -121,3 +121,77 @@
 	<dirent.h>
 	<libgen.h>
 
+1489937297 source:/home/kris/pbackup/fanotify.cpp
+	"fanotify.h"
+
+1488306056 /home/kris/pbackup/fanotify.h
+	<string.h>
+	<unistd.h>
+	<sys/fanotify.h>
+	<sys/stat.h>
+	<fcntl.h>
+	<iostream>
+	<libconfig.h++>
+
+1489941873 source:/home/kris/pbackup/filescopy.cpp
+	"filescopy.h"
+
+1489940792 /home/kris/pbackup/filescopy.h
+	<sys/fanotify.h>
+	<sys/stat.h>
+	<limits.h>
+	<unistd.h>
+	<fcntl.h>
+	<string.h>
+	<sys/sendfile.h>
+	<string>
+	<set>
+	<fstream>
+	<regex>
+	<iostream>
+	"settings.h"
+
+1489927719 /home/kris/pbackup/settings.h
+	<iostream>
+	<string>
+	<limits.h>
+	<unistd.h>
+	<libconfig.h++>
+
+1489927719 source:/home/kris/pbackup/main.cpp
+	<unistd.h>
+	<poll.h>
+	<string.h>
+	<sys/signal.h>
+	<sys/stat.h>
+	<sys/fanotify.h>
+	<iostream>
+	<string>
+	"signals.h"
+	"fanotify.h"
+	"filescopy.h"
+	"settings.h"
+	"permissions.h"
+
+1488306050 /home/kris/pbackup/signals.h
+	<sys/signal.h>
+	<unistd.h>
+	<string.h>
+	<sys/signalfd.h>
+	<iostream>
+
+1489927719 /home/kris/pbackup/permissions.h
+	<unistd.h>
+	<iostream>
+	<fstream>
+	"settings.h"
+
+1489930385 source:/home/kris/pbackup/permissions.cpp
+	"permissions.h"
+
+1489940774 source:/home/kris/pbackup/settings.cpp
+	"settings.h"
+
+1489346236 source:/home/kris/pbackup/signals.cpp
+	"signals.h"
+

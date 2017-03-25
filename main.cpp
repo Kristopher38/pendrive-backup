@@ -178,7 +178,7 @@ int main()
         }
 
         /* Jeżeli w konfiguracji jest włączone uruchomienie skryptu użytkownika, uruchom skrypt */
-        if (global_config.lookup("general.send_to_phone"))
+        if (global_config.lookup("general.execute_userscript"))
         {
             std::cout<<"Running user-defined script"<<std::endl;
             std::string command = "sh " + app_launch_dir + "userscript.sh";

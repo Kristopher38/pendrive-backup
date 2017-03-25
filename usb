@@ -1,7 +1,7 @@
 #!/bin/sh
 # definicja punktu montowania i UUID pamięci masowej na której znajduje się program
-MOUNTPOINT="/media/kris/pendrive"
-UUID="a534f24b-c9c4-411a-981f-e9699dfd065b"
+MOUNTPOINT="/media/kris/backup"
+UUID="c698ed03-f622-4cdd-b817-6d33c0199de6"
 
 # ścieżka do symlinku pozwalającego na pobranie ścieżki do pliku blokowego urządzenia
 UUIDPATH="/dev/disk/by-uuid/$UUID"

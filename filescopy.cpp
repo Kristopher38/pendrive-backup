@@ -308,10 +308,10 @@ void add_file_to_list(const fanotify_event_metadata* metadata)  /* Przepuszcza p
         return;
 
     /* Odfiltruj event na podstawie filtra nazw plików z konfiguracji */
-    if (global_config.lookup("filtering.extensions.filter_list").getLength() > 0)
+    if (global_config.lookup("filtering.filenames.filter_list").getLength() > 0)
     {
         std::string filename = source_path.substr(source_path.find_last_of("/") + 1, std::string::npos);
-        filter_extension = filter_out("filtering.extensions", filename);
+        filter_extension = filter_out("filtering.filenames", filename);
     }
 
     /* Odfiltruj event na podstawie filtra nazw programów z konfiguracj */
